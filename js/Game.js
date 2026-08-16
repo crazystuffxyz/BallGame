@@ -5,6 +5,7 @@ import { Player } from './Player.js';
 import { EditorController } from './EditorController.js';
 import { THEMES, normalizeLevelData, PRESETS } from './Constants.js';
 import { Storage } from './Storage.js';
+import { TextureGen } from './TextureGen.js';
 
 export class Game {
     constructor() {
@@ -47,16 +48,10 @@ export class Game {
     }
     setTheme(themeKey) {
         const theme = THEMES[themeKey] || THEMES.sky;
-        this.scene.background = this.level.materials.floor.map; // Set by LevelManager updating materials
+        this.scene.background = TextureGen.createSkyTexture(themeKey);
         this.scene.fog = new THREE.Fog(theme.fogColor, 20, 110);
         this.dirLight.color.setHex(theme.light);
         if (this.level) this.level.updateThemeMaterials(themeKey);
-        
-        // Re-apply background after LevelManager recreates the sky texture
-        import('./TextureGen.js').then(({ TextureGen }) => {
-            this.scene.background = TextureGen.createSkyTexture(themeKey);
-        });
-
         if (this.levelData) this.levelData.theme = themeKey;
     }
     initLevel() {
