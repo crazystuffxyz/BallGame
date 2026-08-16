@@ -1192,7 +1192,7 @@
             }
             initAssets() {
                 this.geometries.tile = new THREE.BoxGeometry(2.0, 0.4, 2.0);
-                this.geometries.ball = new THREE.SphereGeometry(0.6, 32, 32);
+                this.geometries.ball = new THREE.SphereGeometry(0.78, 32, 32); // Scaled 1.3x 
                 this.geometries.pyramid = new THREE.ConeGeometry(0.8, 1.8, 4);
                 this.geometries.trunk = new THREE.CylinderGeometry(0.2, 0.3, 0.8, 8);
                 this.geometries.foliage = new THREE.ConeGeometry(0.9, 1.6, 6);
@@ -1473,7 +1473,7 @@
             constructor(scene, sound) {
                 this.scene = scene;
                 this.sound = sound;
-                this.radius = 0.6;
+                this.radius = 0.78; // 1.3x Bigger
                 this.pos = new THREE.Vector3(0, this.radius, 0);
                 this.velY = 0;
                 this.isGrounded = true;
@@ -1512,7 +1512,8 @@
                 return group;
             }
             createShadow() {
-                // Radius is 1/2 of previous (0.45 * radius = 0.27), reducing area to 1/4
+                // Radius is 1/2 of footprint target (0.45 * radius), reducing area to 1/4
+                // Since this.radius scales up 1.3x, the shadow implicitly scales up 1.3x as well.
                 const geo = new THREE.CircleGeometry(this.radius * 0.45, 24);
                 geo.rotateX(-Math.PI / 2);
                 const mat = new THREE.MeshBasicMaterial({
@@ -1553,7 +1554,7 @@
 
                 const TILE_SIZE = 2.0;
                 const TILE_HALF = 1.0;
-                // Margin is 1/2 radius (0.27), giving 1/4 area footprint for tight diagonal precision
+                // Margin is 1/2 radius (0.45), giving 1/4 area footprint for tight diagonal precision
                 const shadowRadius = this.radius * 0.45;
 
                 const fwdDist = this.speedSqS * TILE_SIZE * delta;
@@ -2376,12 +2377,15 @@
             }
             checkItemCollisions() {
                 const pPos = this.player.pos;
+                const rOffset = this.player.radius - 0.6; // Adjust threshold based on new, larger radius
+
                 for (let child of this.level.obstacleGroup.children) {
                     if (child.userData && !child.userData.collected) {
                         const dist = child.position.distanceTo(pPos);
+                        const hitRadius = child.userData.hitRadius + rOffset;
 
                         if (child.userData.isItem) {
-                            if (dist < child.userData.hitRadius) {
+                            if (dist < hitRadius) {
                                 child.userData.collected = true;
                                 child.visible = false;
                                 if (child.userData.isCrown) {
@@ -2394,7 +2398,7 @@
                                 this.updateHUDStats();
                             }
                         } else {
-                            if (dist < child.userData.hitRadius && Math.abs(pPos.y - child.position.y) < child.userData.hitHeight) {
+                            if (dist < hitRadius && Math.abs(pPos.y - child.position.y) < child.userData.hitHeight) {
                                 this.player.crash("obstacle");
                                 return;
                             }
@@ -2416,12 +2420,12 @@
                     this.level.update(delta, this.player.pos.z);
                     this.checkItemCollisions();
 
-                    // Authentic 45-degree Bird's-Eye 3D Camera Follow
-                    this.camera.position.x = this.player.pos.x * 0.35;
+                    // Camera TRANSLATES with the ball perfectly instead of tilting
+                    this.camera.position.x = this.player.pos.x;
                     this.camera.position.y = Math.max(4.5, this.player.pos.y + 8.0);
                     this.camera.position.z = this.player.pos.z + 5.5;
                     this.camera.lookAt(
-                        this.player.pos.x * 0.15,
+                        this.player.pos.x, // Looks straight ahead from where the ball is
                         Math.max(0, this.player.pos.y * 0.35),
                         this.player.pos.z - 2.5
                     );
