@@ -1,0 +1,140 @@
+export const THEMES = {
+    sky: {
+        name: 'Cloud Sky',
+        fogColor: 0xa0c4ff,
+        tileColors: { main: '#3a88fe', sub: '#235bb5', border: '#00f2ff' },
+        accent: 0x00f2ff,
+        ballColor: 0xffffff,
+        light: 0xffffff
+    },
+    cyber: {
+        name: 'Cyber Synth',
+        fogColor: 0x1f062e,
+        tileColors: { main: '#2d0c4e', sub: '#18042b', border: '#ff00aa' },
+        accent: 0xff00aa,
+        ballColor: 0x00ffff,
+        light: 0xffaaff
+    },
+    inferno: {
+        name: 'Inferno Volcano',
+        fogColor: 0x240606,
+        tileColors: { main: '#401010', sub: '#240808', border: '#ff4400' },
+        accent: 0xff3b00,
+        ballColor: 0xffcc00,
+        light: 0xff8844
+    },
+    cosmos: {
+        name: 'Deep Cosmos',
+        fogColor: 0x070b1a,
+        tileColors: { main: '#0d1f3d', sub: '#081224', border: '#7000ff' },
+        accent: 0x7000ff,
+        ballColor: 0x00ffcc,
+        light: 0x88bbff
+    }
+};
+
+export function computeEffectiveTempoBefore(rows, baseTempo, uptoRow) {
+    const fallback = (typeof baseTempo === 'number' && !isNaN(baseTempo)) ? baseTempo : 11;
+    if (!Array.isArray(rows)) return fallback;
+    const start = Math.min(uptoRow, rows.length) - 1;
+    for (let r = start; r >= 0; r--) {
+        const row = rows[r];
+        if (!row || !row.tiles || !row.tileTempo) continue;
+        for (let c = 0; c < 5; c++) {
+            if (row.tiles[c] === 8 && row.tileTempo[c]) {
+                return row.tileTempo[c];
+            }
+        }
+    }
+    return fallback;
+}
+
+export function tempoDirection(value, prevValue) {
+    if (value > prevValue + 0.05) return 'up';
+    if (value < prevValue - 0.05) return 'down';
+    return 'same';
+}
+
+export function normalizeLevelData(data) {
+    if (!data || typeof data !== 'object') {
+        return { theme: 'sky', baseTempo: 11, rows: [] };
+    }
+    if (typeof data.baseTempo !== 'number' || isNaN(data.baseTempo)) {
+        data.baseTempo = (typeof data.speed === 'number' && !isNaN(data.speed))
+            ? Math.round(data.speed * 11 * 10) / 10
+            : 11;
+    }
+    data.baseTempo = Math.max(2, Math.min(40, data.baseTempo));
+    if (!Array.isArray(data.rows)) data.rows = [];
+    for (const row of data.rows) {
+        if (!row || typeof row !== 'object') continue;
+        if (!Array.isArray(row.tiles) || row.tiles.length !== 5) row.tiles = [0, 0, 0, 0, 0];
+        if (!Array.isArray(row.obstacles) || row.obstacles.length !== 5) row.obstacles = [0, 0, 0, 0, 0];
+        if (!Array.isArray(row.tileTempo) || row.tileTempo.length !== 5) row.tileTempo = [0, 0, 0, 0, 0];
+    }
+    if (!data.theme) data.theme = 'sky';
+    return data;
+}
+
+export function generatePresetTrack(type) {
+    const TOTAL = 120;
+    const rows = [];
+    for (let r = 0; r < TOTAL; r++) {
+        let tiles = [0, 0, 0, 0, 0];
+        let obs = [0, 0, 0, 0, 0];
+
+        if (r < 6) {
+            tiles = [1, 1, 1, 1, 1];
+        } else if (r === TOTAL - 1) {
+            tiles = [1, 1, 1, 1, 1];
+        } else {
+            if (type === 1) {
+                const pattern = r % 16;
+                if (pattern < 4) tiles = [0, 1, 1, 1, 0];
+                else if (pattern < 8) { tiles = [1, 1, 1, 0, 0]; if (pattern === 6) obs[0] = 1; }
+                else if (pattern < 12) { tiles = [0, 0, 1, 1, 1]; if (pattern === 10) obs[4] = 1; }
+                else tiles = [0, 1, 1, 1, 0];
+
+                if (r === 18 || r === 42 || r === 70 || r === 95) tiles[2] = 2;
+                if ((r >= 19 && r <= 21) || (r >= 43 && r <= 45) || (r >= 71 && r <= 73) || (r >= 96 && r <= 98)) tiles = [0, 0, 0, 0, 0];
+
+                if (r % 11 === 0 && r > 6) obs[2] = 6;
+                if (r === 30 || r === 65 || r === 105) obs[2] = 7;
+                if (r % 14 === 5 && r > 10) obs[1] = 2;
+            } else if (type === 2) {
+                tiles = [1, 1, 1, 1, 1];
+                if (r % 8 === 0) tiles[1] = 4;
+                if (r % 8 === 4) tiles[3] = 4;
+                if (r === 25 || r === 60 || r === 90) tiles[2] = 5;
+                if (r === 35 || r === 70 || r === 100) tiles[2] = 6;
+
+                if (r % 12 === 0) obs[2] = 3;
+                if (r % 10 === 5) obs[Math.random() > 0.5 ? 0 : 4] = 2;
+                if (r % 9 === 0) obs[2] = 6;
+                if (r === 32 || r === 68 || r === 110) obs[1] = 7;
+            } else {
+                const p = r % 10;
+                if (p === 0 || p === 1) tiles = [1, 1, 0, 0, 0];
+                else if (p === 2 || p === 3) tiles = [0, 1, 1, 1, 0];
+                else if (p === 4 || p === 5) tiles = [0, 0, 0, 1, 1];
+                else tiles = [0, 1, 1, 1, 0];
+
+                if (r === 20 || r === 55 || r === 85) tiles[2] = 3;
+                if ((r >= 21 && r <= 24) || (r >= 56 && r <= 59)) tiles = [0,0,0,0,0];
+
+                if (r % 7 === 0) obs[2] = 4;
+                if (r % 13 === 0) obs[1] = 5;
+                if (r % 8 === 0) obs[2] = 6;
+                if (r === 28 || r === 62 || r === 108) obs[3] = 7;
+            }
+        }
+        rows.push({ tiles: tiles, obstacles: obs, tileTempo: [0, 0, 0, 0, 0] });
+    }
+    return rows;
+}
+
+export const PRESETS = {
+    preset_cloud: { name: "Cloud Meadows", theme: "sky", baseTempo: 11, rows: generatePresetTrack(1) },
+    preset_cyber: { name: "Cyber Matrix", theme: "cyber", baseTempo: 13, rows: generatePresetTrack(2) },
+    preset_inferno: { name: "Inferno Temple", theme: "inferno", baseTempo: 14.5, rows: generatePresetTrack(3) }
+};
