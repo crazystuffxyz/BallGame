@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <title>Rolling Sky - Level Editor & Player</title>
     <style>
         :root {
@@ -24,6 +24,7 @@
             background: #000;
             font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
             color: #fff;
+            touch-action: none;
         }
         #game-canvas {
             display: block;
@@ -43,7 +44,8 @@
         .interactive {
             pointer-events: auto !important;
         }
-        /* Top HUD Bar */
+
+        /* --- Top HUD Bar --- */
         #hud-top {
             display: flex;
             justify-content: space-between;
@@ -100,7 +102,7 @@
             border-radius: 8px;
             cursor: pointer;
             box-shadow: var(--border-glow);
-            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transition: all 0.2s ease;
             display: flex;
             align-items: center;
             gap: 6px;
@@ -151,7 +153,6 @@
         #game-overlay.active, #json-modal.active {
             display: flex !important;
         }
-
         .modal-card {
             background: var(--bg-dark);
             border: 2px solid var(--primary);
@@ -168,14 +169,8 @@
             margin-bottom: 12px;
             letter-spacing: 2px;
         }
-        .modal-title.win {
-            color: #00ff88;
-            text-shadow: 0 0 20px #00ff88;
-        }
-        .modal-title.fail {
-            color: #ff0055;
-            text-shadow: 0 0 20px #ff0055;
-        }
+        .modal-title.win { color: #00ff88; text-shadow: 0 0 20px #00ff88; }
+        .modal-title.fail { color: #ff0055; text-shadow: 0 0 20px #ff0055; }
         .modal-stats {
             display: flex;
             justify-content: space-around;
@@ -198,9 +193,8 @@
             flex-direction: column;
             justify-content: space-between;
         }
-        #editor-panel.hidden {
-            display: none !important;
-        }
+        #editor-panel.hidden { display: none !important; }
+        
         #editor-topbar {
             background: var(--bg-dark);
             border-bottom: 2px solid var(--primary);
@@ -229,9 +223,6 @@
             outline: none;
             pointer-events: auto !important;
             cursor: pointer;
-        }
-        .editor-select:focus, .editor-input:focus {
-            box-shadow: 0 0 10px var(--primary);
         }
 
         /* --- Draggable Floating Palette --- */
@@ -266,9 +257,7 @@
             color: var(--primary);
             touch-action: none;
         }
-        #palette-header:active {
-            cursor: grabbing;
-        }
+        #palette-header:active { cursor: grabbing; }
         .palette-header-btn {
             background: transparent;
             border: none;
@@ -278,22 +267,16 @@
             padding: 2px 6px;
             border-radius: 4px;
         }
-        .palette-header-btn:hover {
-            background: rgba(255,255,255,0.2);
-        }
         #palette-body {
             padding: 12px;
             display: flex;
             flex-direction: column;
             gap: 10px;
-            max-height: calc(100vh - 180px);
+            max-height: max(30vh, calc(100vh - 250px));
             overflow-y: auto;
         }
-        #palette-body.collapsed {
-            display: none !important;
-        }
+        #palette-body.collapsed { display: none !important; }
 
-        /* Palette Category Tabs */
         .palette-tabs {
             display: flex;
             gap: 4px;
@@ -307,24 +290,20 @@
             background: transparent;
             border: none;
             color: #8fa0c0;
-            padding: 6px 4px;
+            padding: 6px 2px;
             font-size: 11px;
             font-weight: 700;
             border-radius: 6px;
             cursor: pointer;
-            transition: all 0.15s ease;
         }
         .tab-btn.active {
             background: var(--primary);
             color: #000;
             box-shadow: 0 0 10px var(--primary);
         }
-        .tab-content {
-            display: none;
-        }
-        .tab-content.active {
-            display: block;
-        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
         .palette-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -340,17 +319,11 @@
             font-weight: 600;
             cursor: pointer;
             text-align: center;
-            transition: all 0.15s ease;
             display: flex;
             flex-direction: column;
             align-items: center;
             gap: 3px;
             pointer-events: auto !important;
-        }
-        .tool-btn:hover {
-            border-color: var(--primary);
-            background: #1e3354;
-            transform: translateY(-1px);
         }
         .tool-btn.active {
             background: var(--primary);
@@ -359,9 +332,7 @@
             border-color: #fff;
             box-shadow: 0 0 12px var(--primary);
         }
-        .tool-btn .icon {
-            font-size: 16px;
-        }
+        .tool-btn .icon { font-size: 16px; }
 
         /* --- Bottom Row Navigation Scrubber --- */
         #editor-bottombar {
@@ -393,10 +364,7 @@
             font-weight: bold;
             cursor: pointer;
         }
-        .step-btn:hover {
-            background: var(--primary);
-            color: #000;
-        }
+        .step-btn:hover { background: var(--primary); color: #000; }
         #row-slider {
             flex-grow: 1;
             accent-color: var(--primary);
@@ -408,12 +376,11 @@
         #row-display {
             font-size: 13px;
             font-weight: 800;
-            min-width: 105px;
+            min-width: 95px;
             color: var(--primary);
             text-align: center;
         }
 
-        /* JSON Card Inside Modal */
         .json-card {
             background: var(--bg-dark);
             border: 2px solid var(--primary);
@@ -421,6 +388,7 @@
             padding: 22px;
             width: 540px;
             max-width: 90%;
+            max-height: 90vh;
             display: flex;
             flex-direction: column;
             gap: 12px;
@@ -428,6 +396,8 @@
         }
         #json-textarea {
             width: 100%;
+            flex-shrink: 1;
+            min-height: 120px;
             height: 220px;
             background: #090f1d;
             border: 1px solid rgba(0, 242, 255, 0.4);
@@ -438,6 +408,51 @@
             border-radius: 6px;
             resize: none;
             outline: none;
+        }
+
+        /* =======================================================
+           MOBILE & RESPONSIVE STYLES
+           ======================================================= */
+        @media (max-width: 768px) {
+            .hide-mobile { display: none !important; }
+
+            /* HUD adjustments */
+            #hud-top {
+                flex-wrap: wrap;
+                padding: 10px;
+                gap: 10px;
+            }
+            #stats-bar { width: 100%; justify-content: space-around; }
+            #top-controls { width: 100%; justify-content: space-between; }
+            .hud-btn { padding: 8px; font-size: 12px; flex-grow: 1; justify-content: center; }
+            #progress-container { width: 100px; }
+
+            /* Editor adjustments */
+            #editor-topbar {
+                padding: 6px 10px;
+                gap: 6px;
+                max-height: 120px;
+                overflow-y: auto;
+            }
+            .editor-group { width: 100%; justify-content: space-between; }
+            .editor-select, .editor-input { flex: 1; min-width: 0; padding: 6px; }
+
+            #editor-palette {
+                top: 110px;
+                left: 6px;
+                width: 220px;
+            }
+            #palette-body { padding: 8px; max-height: 35vh; }
+            .tool-btn { padding: 6px 2px; }
+
+            #editor-bottombar {
+                padding: 8px 10px;
+                flex-direction: column;
+                gap: 8px;
+            }
+            .scrubber-wrap { width: 100%; }
+            .bottom-controls { width: 100%; justify-content: flex-start; }
+            .hint-text { font-size: 10px !important; line-height: 1.2; text-align: left !important; }
         }
     </style>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
@@ -471,9 +486,9 @@
                 </div>
             </div>
             <div id="top-controls">
-                <button id="sound-btn" class="hud-btn">🔊 Sound</button>
-                <button id="restart-btn" class="hud-btn">🔄 Restart</button>
-                <button id="mode-toggle-btn" class="hud-btn primary">🛠️ Level Editor</button>
+                <button id="sound-btn" class="hud-btn">🔊 <span class="hide-mobile">Sound</span></button>
+                <button id="restart-btn" class="hud-btn">🔄 <span class="hide-mobile">Restart</span></button>
+                <button id="mode-toggle-btn" class="hud-btn primary">🛠️ Editor</button>
             </div>
         </div>
 
@@ -486,42 +501,48 @@
         <!-- Level Editor UI Overlay -->
         <div id="editor-panel" class="hidden">
             <div id="editor-topbar">
-                <div class="editor-group">
+                <div class="editor-group hide-mobile" style="flex:0 0 auto;">
                     <button id="ed-play-btn" class="hud-btn primary">▶️ Play (Space)</button>
                     <button id="ed-play-start-btn" class="hud-btn">⏮️ From Start</button>
                 </div>
-                <div class="editor-group">
-                    <label style="font-size: 12px; font-weight: bold;">Level:</label>
+                <!-- Mobile Only Play Buttons -->
+                <div class="editor-group" style="display: none;" id="mobile-play-btns">
+                    <button id="ed-play-btn-mob" class="hud-btn primary">▶️ Play</button>
+                    <button id="ed-play-start-btn-mob" class="hud-btn">⏮️ Start</button>
+                </div>
+
+                <div class="editor-group" style="flex:1; justify-content:center; gap:4px;">
+                    <label class="hide-mobile" style="font-size: 11px; font-weight: bold;">Level:</label>
                     <select id="preset-select" class="editor-select">
                         <option value="preset_cloud">Cloud Meadows</option>
                         <option value="preset_cyber">Cyber Matrix</option>
                         <option value="preset_inferno">Inferno Temple</option>
-                        <option value="custom">Custom Saved</option>
+                        <option value="custom">Custom</option>
                     </select>
-                    <label style="font-size: 12px; font-weight: bold; margin-left: 6px;">Theme:</label>
+                    <label class="hide-mobile" style="font-size: 11px; font-weight: bold; margin-left: 4px;">Theme:</label>
                     <select id="theme-select" class="editor-select">
                         <option value="sky">Cloud Sky</option>
                         <option value="cyber">Cyber Synth</option>
-                        <option value="inferno">Inferno Volcano</option>
+                        <option value="inferno">Inferno Temple</option>
                         <option value="cosmos">Deep Cosmos</option>
                     </select>
-                    <label style="font-size: 12px; font-weight: bold; margin-left: 6px;" title="Starting speed of the level, in squares per second">Start Tempo:</label>
-                    <input type="number" id="base-tempo-input" class="editor-input" min="2" max="40" step="0.5" value="11" style="width:64px;" title="Squares per second at the start of the level">
+                    <label class="hide-mobile" style="font-size: 11px; font-weight: bold; margin-left: 4px;" title="Starting speed">Tempo:</label>
+                    <input type="number" id="base-tempo-input" class="editor-input" min="2" max="40" step="0.5" value="11" style="width:50px;">
                 </div>
-                <div class="editor-group">
-                    <button id="ed-save-btn" class="hud-btn">💾 Save</button>
-                    <button id="ed-json-btn" class="hud-btn">📋 JSON</button>
-                    <button id="ed-clear-btn" class="hud-btn" style="border-color:#ff0055; color:#ff0055;">🗑️ Clear</button>
-                    <button id="ed-exit-btn" class="hud-btn">✕ Exit</button>
+                <div class="editor-group" style="flex:0 0 auto; justify-content: flex-end;">
+                    <button id="ed-save-btn" class="hud-btn">💾<span class="btn-text hide-mobile"> Save</span></button>
+                    <button id="ed-json-btn" class="hud-btn">📋<span class="btn-text hide-mobile"> JSON</span></button>
+                    <button id="ed-clear-btn" class="hud-btn" style="border-color:#ff0055; color:#ff0055;">🗑️<span class="btn-text hide-mobile"> Clear</span></button>
+                    <button id="ed-exit-btn" class="hud-btn">✕<span class="btn-text hide-mobile"> Exit</span></button>
                 </div>
             </div>
 
             <!-- Draggable Floating Palette -->
             <div id="editor-palette">
                 <div id="palette-header">
-                    <span>🎨 PALETTE & TOOLS</span>
+                    <span>🎨 PALETTE</span>
                     <div>
-                        <button id="palette-min-btn" class="palette-header-btn" title="Minimize / Expand">_</button>
+                        <button id="palette-min-btn" class="palette-header-btn">_</button>
                     </div>
                 </div>
                 <div id="palette-body">
@@ -529,90 +550,58 @@
                         <button class="tab-btn active" data-target="tab-tiles">Tiles</button>
                         <button class="tab-btn" data-target="tab-obs">Obstacles</button>
                         <button class="tab-btn" data-target="tab-tempo">Tempo</button>
-                        <button class="tab-btn" data-target="tab-tools">Row Tools</button>
+                        <button class="tab-btn" data-target="tab-tools">Tools</button>
                     </div>
 
                     <!-- Tiles Tab -->
                     <div id="tab-tiles" class="tab-content active">
                         <div class="palette-grid">
-                            <button class="tool-btn active" data-category="tile" data-val="1">
-                                <span class="icon">⬜</span>Normal
-                            </button>
-                            <button class="tool-btn" data-category="tile" data-val="2">
-                                <span class="icon">🔼</span>Jump Pad
-                            </button>
-                            <button class="tool-btn" data-category="tile" data-val="3">
-                                <span class="icon">⏫</span>Big Jump
-                            </button>
-                            <button class="tool-btn" data-category="tile" data-val="4">
-                                <span class="icon">🪟</span>Glass
-                            </button>
-                            <button class="tool-btn" data-category="tile" data-val="5">
-                                <span class="icon">⚡</span>Speed Up
-                            </button>
-                            <button class="tool-btn" data-category="tile" data-val="6">
-                                <span class="icon">🛑</span>Speed Down
-                            </button>
-                            <button class="tool-btn" data-category="tile" data-val="7">
-                                <span class="icon">✨</span>Fade Tile
-                            </button>
-                            <button class="tool-btn" data-category="tile" data-val="0">
-                                <span class="icon">⬛</span>Void (Erase)
-                            </button>
+                            <button class="tool-btn active" data-category="tile" data-val="1"><span class="icon">⬜</span>Normal</button>
+                            <button class="tool-btn" data-category="tile" data-val="2"><span class="icon">🔼</span>Jump Pad</button>
+                            <button class="tool-btn" data-category="tile" data-val="3"><span class="icon">⏫</span>Big Jump</button>
+                            <button class="tool-btn" data-category="tile" data-val="4"><span class="icon">🪟</span>Glass</button>
+                            <button class="tool-btn" data-category="tile" data-val="5"><span class="icon">⚡</span>Speed Up</button>
+                            <button class="tool-btn" data-category="tile" data-val="6"><span class="icon">🛑</span>Speed Down</button>
+                            <button class="tool-btn" data-category="tile" data-val="7"><span class="icon">✨</span>Fade Tile</button>
+                            <button class="tool-btn" data-category="tile" data-val="0"><span class="icon">⬛</span>Void (Erase)</button>
                         </div>
                     </div>
 
                     <!-- Obstacles Tab -->
                     <div id="tab-obs" class="tab-content">
                         <div class="palette-grid">
-                            <button class="tool-btn" data-category="obstacle" data-val="1">
-                                <span class="icon">🌲</span>Tree/Pillar
-                            </button>
-                            <button class="tool-btn" data-category="obstacle" data-val="2">
-                                <span class="icon">🔺</span>Pyramid
-                            </button>
-                            <button class="tool-btn" data-category="obstacle" data-val="3">
-                                <span class="icon">⚡</span>Laser Gate
-                            </button>
-                            <button class="tool-btn" data-category="obstacle" data-val="4">
-                                <span class="icon">🔨</span>Hammer
-                            </button>
-                            <button class="tool-btn" data-category="obstacle" data-val="5">
-                                <span class="icon">📦</span>Drop Block
-                            </button>
-                            <button class="tool-btn" data-category="obstacle" data-val="6">
-                                <span class="icon">💎</span>Diamond
-                            </button>
-                            <button class="tool-btn" data-category="obstacle" data-val="7">
-                                <span class="icon">👑</span>Crown
-                            </button>
-                            <button class="tool-btn" data-category="obstacle" data-val="0">
-                                <span class="icon">❌</span>Erase Obs
-                            </button>
+                            <button class="tool-btn" data-category="obstacle" data-val="1"><span class="icon">🌲</span>Tree/Pillar</button>
+                            <button class="tool-btn" data-category="obstacle" data-val="2"><span class="icon">🔺</span>Pyramid</button>
+                            <button class="tool-btn" data-category="obstacle" data-val="3"><span class="icon">⚡</span>Laser Gate</button>
+                            <button class="tool-btn" data-category="obstacle" data-val="4"><span class="icon">🔨</span>Hammer</button>
+                            <button class="tool-btn" data-category="obstacle" data-val="5"><span class="icon">📦</span>Drop Block</button>
+                            <button class="tool-btn" data-category="obstacle" data-val="6"><span class="icon">💎</span>Diamond</button>
+                            <button class="tool-btn" data-category="obstacle" data-val="7"><span class="icon">👑</span>Crown</button>
+                            <button class="tool-btn" data-category="obstacle" data-val="0"><span class="icon">❌</span>Erase Obs</button>
                         </div>
                     </div>
 
                     <!-- Tempo Tab -->
                     <div id="tab-tempo" class="tab-content">
                         <div style="display:flex; flex-direction:column; gap:8px;">
-                            <label style="font-size: 11px; color:#aaa;">Target Tempo (squares/sec)</label>
+                            <label style="font-size: 11px; color:#aaa;">Target Tempo (sq/sec)</label>
                             <input type="number" id="tempo-value-input" class="editor-input" min="2" max="40" step="0.5" value="15" style="width:100%;">
-                            <div id="tempo-preview" style="text-align:center; font-weight:800; font-size:12px; padding:8px 6px; border-radius:6px; background:#152238; border:1px solid rgba(0,242,255,0.25); line-height:1.5;">
+                            <div id="tempo-preview" style="text-align:center; font-weight:800; font-size:12px; padding:8px 6px; border-radius:6px; background:#152238; border:1px solid rgba(0,242,255,0.25);">
                                 <div><span id="tempo-preview-icon">➖</span></div>
                                 <div id="tempo-preview-text" style="font-size:11px; font-weight:600; color:#cfd8ea;">Same tempo</div>
                             </div>
                             <button class="tool-btn" data-category="tile" data-val="8" style="width:100%; flex-direction:row; justify-content:center;">
                                 <span class="icon">🎵</span>Place Tempo Tile
                             </button>
-                            <span style="font-size:10px; color:#8fa0c0;">Roll onto this tile in-game to snap to the target tempo. Arrow shows faster/slower vs. the previous tempo on the track. Use the Void tool (Tiles tab) or Backspace/Delete to remove.</span>
+                            <span style="font-size:10px; color:#8fa0c0; line-height: 1.2;">Roll onto this tile to snap to tempo. Use Void tool to remove.</span>
                         </div>
                     </div>
 
                     <!-- Tools Tab -->
                     <div id="tab-tools" class="tab-content">
                         <div style="display:flex; flex-direction:column; gap:6px;">
-                            <button id="ed-fill-row-btn" class="tool-btn">Fill Current Row (5 Tiles)</button>
-                            <button id="ed-clear-row-btn" class="tool-btn">Clear Current Row</button>
+                            <button id="ed-fill-row-btn" class="tool-btn">Fill Row (5 Tiles)</button>
+                            <button id="ed-clear-row-btn" class="tool-btn">Clear Row</button>
                             <button id="ed-add-10rows-btn" class="tool-btn">+ Add 10 Rows</button>
                             <button id="ed-dup-row-btn" class="tool-btn">Duplicate Row Ahead</button>
                         </div>
@@ -623,15 +612,18 @@
             <!-- Bottom Navigation Bar & Scrubber -->
             <div id="editor-bottombar">
                 <div class="scrubber-wrap">
-                    <button id="step-prev-10" class="step-btn" title="Back 10 Rows">-10</button>
-                    <button id="step-prev-1" class="step-btn" title="Back 1 Row">-1</button>
+                    <button id="step-prev-10" class="step-btn" title="Back 10">-10</button>
+                    <button id="step-prev-1" class="step-btn" title="Back 1">-1</button>
                     <input type="range" id="row-slider" min="0" max="120" value="0">
-                    <button id="step-next-1" class="step-btn" title="Forward 1 Row">+1</button>
-                    <button id="step-next-10" class="step-btn" title="Forward 10 Rows">+10</button>
-                    <span id="row-display">Row: 0 / 120</span>
+                    <button id="step-next-1" class="step-btn" title="Forward 1">+1</button>
+                    <button id="step-next-10" class="step-btn" title="Forward 10">+10</button>
+                    <span id="row-display">Row: 0/120</span>
                 </div>
-                <div class="editor-group">
-                    <span style="font-size: 12px; color:#aaa;">Click/Drag to paint | Right-Click to erase | Backspace/Delete to clear hovered cell | Drag Right-Mouse to pan</span>
+                <div class="editor-group bottom-controls">
+                    <button id="ed-mode-toggle" class="hud-btn primary" style="padding: 6px 12px; margin-right: 8px;">🖌️ Paint Mode</button>
+                    <span class="hint-text" style="font-size: 11px; color:#aaa; flex-grow:1;">
+                        <span class="hide-mobile">Right-Click to Erase | Right-Drag to Pan | </span>Drag to paint/pan
+                    </span>
                 </div>
             </div>
         </div>
@@ -664,12 +656,12 @@
         <!-- JSON Import/Export Modal -->
         <div id="json-modal">
             <div class="json-card">
-                <h3 style="color: var(--primary);">Level Data (JSON)</h3>
+                <h3 style="color: var(--primary); margin-bottom: 0;">Level Data (JSON)</h3>
                 <textarea id="json-textarea" spellcheck="false"></textarea>
                 <div style="display:flex; justify-content: flex-end; gap: 10px;">
                     <button id="json-copy-btn" class="hud-btn">📋 Copy</button>
-                    <button id="json-load-btn" class="hud-btn primary">📥 Load JSON</button>
-                    <button id="json-close-btn" class="hud-btn">Close</button>
+                    <button id="json-load-btn" class="hud-btn primary">📥 Load</button>
+                    <button id="json-close-btn" class="hud-btn">✕ Close</button>
                 </div>
             </div>
         </div>
@@ -679,6 +671,11 @@
 
     <script type="module">
         import * as THREE from 'three';
+
+        // --- Style adjustments applied dynamically based on screen width ---
+        if (window.innerWidth <= 768) {
+            document.getElementById('mobile-play-btns').style.display = 'flex';
+        }
 
         // --- Sound Engine (Web Audio API Synthesizer) ---
         class SoundEngine {
@@ -1732,6 +1729,9 @@
                 this.isPainting = false;
                 this.isHoveringUI = false;
 
+                // Mobile/Touch Toggle State
+                this.interactionMode = 'paint';
+
                 this.isPanningTrack = false;
                 this.panStartY = 0;
                 this.panStartRow = 0;
@@ -1782,8 +1782,8 @@
                     if (!isDragging) return;
                     const dx = e.clientX - startX;
                     const dy = e.clientY - startY;
-                    let newLeft = Math.max(10, Math.min(window.innerWidth - palette.offsetWidth - 10, initLeft + dx));
-                    let newTop = Math.max(50, Math.min(window.innerHeight - palette.offsetHeight - 10, initTop + dy));
+                    let newLeft = Math.max(0, Math.min(window.innerWidth - palette.offsetWidth, initLeft + dx));
+                    let newTop = Math.max(0, Math.min(window.innerHeight - palette.offsetHeight, initTop + dy));
                     palette.style.left = `${newLeft}px`;
                     palette.style.top = `${newTop}px`;
                 });
@@ -1822,29 +1822,26 @@
                 });
 
                 const slider = document.getElementById('row-slider');
-                slider.addEventListener('input', (e) => {
-                    this.scrollToRow(parseInt(e.target.value));
-                });
-                slider.addEventListener('change', (e) => {
-                    this.scrollToRow(parseInt(e.target.value));
-                });
+                const onSliderInteraction = (e) => { e.stopPropagation(); this.scrollToRow(parseInt(e.target.value)); };
+                slider.addEventListener('input', onSliderInteraction);
+                slider.addEventListener('change', onSliderInteraction);
+                slider.addEventListener('pointerdown', (e) => e.stopPropagation());
 
                 document.getElementById('step-prev-10').onclick = (e) => { e.stopPropagation(); this.scrollToRow(this.currentRow - 10); };
                 document.getElementById('step-prev-1').onclick = (e) => { e.stopPropagation(); this.scrollToRow(this.currentRow - 1); };
                 document.getElementById('step-next-1').onclick = (e) => { e.stopPropagation(); this.scrollToRow(this.currentRow + 1); };
                 document.getElementById('step-next-10').onclick = (e) => { e.stopPropagation(); this.scrollToRow(this.currentRow + 10); };
 
-                const pSelect = document.getElementById('preset-select');
-                pSelect.onchange = (e) => {
-                    this.game.loadPreset(e.target.value);
-                };
-                const tSelect = document.getElementById('theme-select');
-                tSelect.onchange = (e) => {
-                    this.game.setTheme(e.target.value);
-                };
+                // Mobile/Desktop Play Buttons
+                const playFn = () => this.game.startPlay(this.currentRow);
+                const playStartFn = () => this.game.startPlay(0);
+                document.getElementById('ed-play-btn').onclick = playFn;
+                document.getElementById('ed-play-start-btn').onclick = playStartFn;
+                document.getElementById('ed-play-btn-mob').onclick = playFn;
+                document.getElementById('ed-play-start-btn-mob').onclick = playStartFn;
 
-                document.getElementById('ed-play-btn').onclick = () => this.game.startPlay(this.currentRow);
-                document.getElementById('ed-play-start-btn').onclick = () => this.game.startPlay(0);
+                document.getElementById('preset-select').onchange = (e) => this.game.loadPreset(e.target.value);
+                document.getElementById('theme-select').onchange = (e) => this.game.setTheme(e.target.value);
                 document.getElementById('ed-save-btn').onclick = () => this.save();
                 document.getElementById('ed-json-btn').onclick = () => this.openJsonModal();
                 document.getElementById('ed-clear-btn').onclick = () => this.clearAll();
@@ -1872,6 +1869,20 @@
                     tempoValueInput.addEventListener('input', () => this.updateTempoPreview());
                 }
 
+                // Interaction Mode Toggle (Pan / Paint)
+                const modeToggleBtn = document.getElementById('ed-mode-toggle');
+                modeToggleBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    this.interactionMode = this.interactionMode === 'paint' ? 'pan' : 'paint';
+                    if (this.interactionMode === 'paint') {
+                        modeToggleBtn.innerHTML = '🖌️ Paint Mode';
+                        modeToggleBtn.className = 'hud-btn primary';
+                    } else {
+                        modeToggleBtn.innerHTML = '✋ Pan Mode';
+                        modeToggleBtn.className = 'hud-btn';
+                    }
+                };
+
                 const uiEls = [
                     document.getElementById('editor-topbar'),
                     document.getElementById('editor-palette'),
@@ -1882,6 +1893,7 @@
                     el.addEventListener('pointerleave', () => { this.isHoveringUI = false; });
                     el.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
                     el.addEventListener('mousedown', (e) => { e.stopPropagation(); });
+                    el.addEventListener('touchstart', (e) => { e.stopPropagation(); }, {passive: false});
                 });
             }
             initEvents() {
@@ -1914,14 +1926,14 @@
                 canvas.addEventListener('pointerdown', (e) => {
                     if (!this.active || this.isHoveringUI) return;
 
-                    if (e.button === 2 || e.button === 1) {
+                    if (e.button === 2 || e.button === 1 || this.interactionMode === 'pan') {
                         this.isPanningTrack = true;
                         this.panStartY = e.clientY;
                         this.panStartRow = this.currentRow;
                         return;
                     }
 
-                    if (e.button === 0) {
+                    if (e.button === 0 && this.interactionMode === 'paint') {
                         this.isPainting = true;
                         this.paintAtHover(false);
                     }
@@ -1969,7 +1981,7 @@
                 const maxRow = this.game.levelData.rows.length - 1;
                 this.currentRow = Math.max(0, Math.min(maxRow, r));
                 document.getElementById('row-slider').value = this.currentRow;
-                document.getElementById('row-display').innerText = `Row: ${this.currentRow} / ${maxRow}`;
+                document.getElementById('row-display').innerText = `Row: ${this.currentRow}/${maxRow}`;
                 this.updateTempoPreview();
 
                 // 45-degree bird's-eye editor camera
@@ -2112,7 +2124,7 @@
                 const maxRow = this.game.levelData.rows.length - 1;
                 const slider = document.getElementById('row-slider');
                 slider.max = maxRow;
-                document.getElementById('row-display').innerText = `Row: ${this.currentRow} / ${maxRow}`;
+                document.getElementById('row-display').innerText = `Row: ${this.currentRow}/${maxRow}`;
             }
             syncTopbarFields() {
                 const baseTempoInput = document.getElementById('base-tempo-input');
@@ -2275,7 +2287,7 @@
                 };
                 document.getElementById('sound-btn').onclick = () => {
                     const muted = this.sound.toggleMute();
-                    document.getElementById('sound-btn').innerText = muted ? "🔇 Muted" : "🔊 Sound";
+                    document.getElementById('sound-btn').innerHTML = muted ? "🔇 <span class='hide-mobile'>Muted</span>" : "🔊 <span class='hide-mobile'>Sound</span>";
                 };
                 document.getElementById('restart-btn').onclick = () => this.restart();
                 document.getElementById('modal-retry-btn').onclick = () => {
@@ -2301,7 +2313,7 @@
                     this.player.mesh.visible = true;
                     this.player.shadow.visible = true;
                     document.getElementById('hud-top').style.display = 'flex';
-                    document.getElementById('mode-toggle-btn').innerText = "🛠️ Level Editor";
+                    document.getElementById('mode-toggle-btn').innerText = "🛠️ Editor";
                     this.restart();
                 }
             }
@@ -2335,7 +2347,7 @@
                     const overlay = document.getElementById('game-overlay');
                     const title = document.getElementById('overlay-title');
                     title.className = "modal-title fail";
-                    title.innerText = reason === "fall" ? "FELL INTO THE VOID!" : "CRASHED!";
+                    title.innerText = reason === "fall" ? "FELL IN THE VOID!" : "CRASHED!";
                     this.showEndModal();
                 }, 600);
             }
