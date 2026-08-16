@@ -1,0 +1,452 @@
+import * as THREE from 'three';
+import { computeEffectiveTempoBefore, tempoDirection, normalizeLevelData } from './Constants.js';
+import { Storage } from './Storage.js';
+
+export class EditorController {
+    constructor(game) {
+        this.game = game;
+        this.active = false;
+        this.selectedCategory = 'tile';
+        this.selectedVal = 1;
+        this.selectedTempoValue = 15;
+        this.currentRow = 0;
+        this.isPainting = false;
+        this.isHoveringUI = false;
+
+        // Mobile/Touch Toggle State
+        this.interactionMode = 'paint';
+
+        this.isPanningTrack = false;
+        this.panStartY = 0;
+        this.panStartRow = 0;
+
+        this.raycaster = new THREE.Raycaster();
+        this.mouse = new THREE.Vector2();
+        this.hoverIndicator = this.createHoverIndicator();
+        this.hoverLane = null;
+        this.hoverRow = null;
+        this.game.scene.add(this.hoverIndicator);
+
+        this.initUI();
+        this.initDraggablePalette();
+        this.initEvents();
+        this.syncTopbarFields();
+    }
+    createHoverIndicator() {
+        const geo = new THREE.BoxGeometry(2.0, 0.45, 2.0);
+        const mat = new THREE.MeshBasicMaterial({
+            color: 0x00f2ff,
+            wireframe: true
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.visible = false;
+        return mesh;
+    }
+    initDraggablePalette() {
+        const palette = document.getElementById('editor-palette');
+        const header = document.getElementById('palette-header');
+        const minBtn = document.getElementById('palette-min-btn');
+        const body = document.getElementById('palette-body');
+
+        let isDragging = false;
+        let startX, startY, initLeft, initTop;
+
+        header.addEventListener('pointerdown', (e) => {
+            if (e.target === minBtn) return;
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            const rect = palette.getBoundingClientRect();
+            initLeft = rect.left;
+            initTop = rect.top;
+            palette.setPointerCapture(e.pointerId);
+        });
+
+        window.addEventListener('pointermove', (e) => {
+            if (!isDragging) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            let newLeft = Math.max(0, Math.min(window.innerWidth - palette.offsetWidth, initLeft + dx));
+            let newTop = Math.max(0, Math.min(window.innerHeight - palette.offsetHeight, initTop + dy));
+            palette.style.left = `${newLeft}px`;
+            palette.style.top = `${newTop}px`;
+        });
+
+        window.addEventListener('pointerup', () => {
+            isDragging = false;
+        });
+
+        minBtn.onclick = (e) => {
+            e.stopPropagation();
+            body.classList.toggle('collapsed');
+            minBtn.innerText = body.classList.contains('collapsed') ? '□' : '_';
+        };
+    }
+    initUI() {
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                const target = document.getElementById(btn.dataset.target);
+                if (target) target.classList.add('active');
+            };
+        });
+
+        document.querySelectorAll('.tool-btn[data-category]').forEach(btn => {
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                document.querySelectorAll('.tool-btn[data-category]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                this.selectedCategory = btn.dataset.category;
+                this.selectedVal = parseInt(btn.dataset.val);
+                this.updateTempoPreview();
+            };
+        });
+
+        const slider = document.getElementById('row-slider');
+        const onSliderInteraction = (e) => { e.stopPropagation(); this.scrollToRow(parseInt(e.target.value)); };
+        slider.addEventListener('input', onSliderInteraction);
+        slider.addEventListener('change', onSliderInteraction);
+        slider.addEventListener('pointerdown', (e) => e.stopPropagation());
+
+        document.getElementById('step-prev-10').onclick = (e) => { e.stopPropagation(); this.scrollToRow(this.currentRow - 10); };
+        document.getElementById('step-prev-1').onclick = (e) => { e.stopPropagation(); this.scrollToRow(this.currentRow - 1); };
+        document.getElementById('step-next-1').onclick = (e) => { e.stopPropagation(); this.scrollToRow(this.currentRow + 1); };
+        document.getElementById('step-next-10').onclick = (e) => { e.stopPropagation(); this.scrollToRow(this.currentRow + 10); };
+
+        // Mobile/Desktop Play Buttons
+        const playFn = () => this.game.startPlay(this.currentRow);
+        const playStartFn = () => this.game.startPlay(0);
+        document.getElementById('ed-play-btn').onclick = playFn;
+        document.getElementById('ed-play-start-btn').onclick = playStartFn;
+        document.getElementById('ed-play-btn-mob').onclick = playFn;
+        document.getElementById('ed-play-start-btn-mob').onclick = playStartFn;
+
+        document.getElementById('preset-select').onchange = (e) => this.game.loadPreset(e.target.value);
+        document.getElementById('theme-select').onchange = (e) => this.game.setTheme(e.target.value);
+        document.getElementById('ed-save-btn').onclick = () => this.save();
+        document.getElementById('ed-json-btn').onclick = () => this.openJsonModal();
+        document.getElementById('ed-clear-btn').onclick = () => this.clearAll();
+        document.getElementById('ed-fill-row-btn').onclick = () => this.fillCurrentRow();
+        document.getElementById('ed-clear-row-btn').onclick = () => this.clearCurrentRow();
+        document.getElementById('ed-add-10rows-btn').onclick = () => this.add10Rows();
+        document.getElementById('ed-dup-row-btn').onclick = () => this.duplicateRowAhead();
+        document.getElementById('ed-exit-btn').onclick = () => this.game.setMode('play');
+
+        const baseTempoInput = document.getElementById('base-tempo-input');
+        if (baseTempoInput) {
+            baseTempoInput.addEventListener('change', (e) => {
+                let val = parseFloat(e.target.value);
+                if (isNaN(val)) val = 11;
+                val = Math.max(2, Math.min(40, val));
+                e.target.value = val;
+                this.game.levelData.baseTempo = val;
+                this.game.level.rebuildMeshes();
+                this.updateTempoPreview();
+            });
+        }
+
+        const tempoValueInput = document.getElementById('tempo-value-input');
+        if (tempoValueInput) {
+            tempoValueInput.addEventListener('input', () => this.updateTempoPreview());
+        }
+
+        // Interaction Mode Toggle (Pan / Paint)
+        const modeToggleBtn = document.getElementById('ed-mode-toggle');
+        modeToggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.interactionMode = this.interactionMode === 'paint' ? 'pan' : 'paint';
+            if (this.interactionMode === 'paint') {
+                modeToggleBtn.innerHTML = '🖌️ Paint Mode';
+                modeToggleBtn.className = 'hud-btn primary';
+            } else {
+                modeToggleBtn.innerHTML = '✋ Pan Mode';
+                modeToggleBtn.className = 'hud-btn';
+            }
+        };
+
+        const uiEls = [
+            document.getElementById('editor-topbar'),
+            document.getElementById('editor-palette'),
+            document.getElementById('editor-bottombar')
+        ];
+        uiEls.forEach(el => {
+            el.addEventListener('pointerenter', () => { this.isHoveringUI = true; this.hoverIndicator.visible = false; });
+            el.addEventListener('pointerleave', () => { this.isHoveringUI = false; });
+            el.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
+            el.addEventListener('mousedown', (e) => { e.stopPropagation(); });
+            el.addEventListener('touchstart', (e) => { e.stopPropagation(); }, {passive: false});
+        });
+    }
+    initEvents() {
+        const canvas = document.getElementById('game-canvas');
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (!this.active) return;
+
+            if (this.isPanningTrack) {
+                const dy = e.clientY - this.panStartY;
+                const rowDelta = Math.round(dy / 15);
+                this.scrollToRow(this.panStartRow + rowDelta);
+                return;
+            }
+
+            if (this.isHoveringUI) {
+                this.hoverIndicator.visible = false;
+                return;
+            }
+
+            this.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            this.updateHover();
+
+            if (this.isPainting) {
+                this.paintAtHover(e.buttons === 2);
+            }
+        });
+
+        canvas.addEventListener('pointerdown', (e) => {
+            if (!this.active || this.isHoveringUI) return;
+
+            if (e.button === 2 || e.button === 1 || this.interactionMode === 'pan') {
+                this.isPanningTrack = true;
+                this.panStartY = e.clientY;
+                this.panStartRow = this.currentRow;
+                return;
+            }
+
+            if (e.button === 0 && this.interactionMode === 'paint') {
+                this.isPainting = true;
+                this.paintAtHover(false);
+            }
+        });
+
+        window.addEventListener('pointerup', () => {
+            this.isPainting = false;
+            this.isPanningTrack = false;
+        });
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        window.addEventListener('wheel', (e) => {
+            if (!this.active || this.isHoveringUI) return;
+            e.preventDefault();
+            const delta = Math.sign(e.deltaY) * (e.shiftKey ? 5 : 1);
+            this.scrollToRow(this.currentRow + delta);
+        }, { passive: false });
+
+        window.addEventListener('keydown', (e) => {
+            if (!this.active) return;
+            if (e.code === 'KeyW' || e.code === 'ArrowUp') this.scrollToRow(this.currentRow + 1);
+            if (e.code === 'KeyS' || e.code === 'ArrowDown') this.scrollToRow(this.currentRow - 1);
+            if (e.code === 'PageUp') this.scrollToRow(this.currentRow + 10);
+            if (e.code === 'PageDown') this.scrollToRow(this.currentRow - 10);
+            if (e.code === 'Backspace' || e.code === 'Delete') {
+                const activeTag = document.activeElement ? document.activeElement.tagName : '';
+                if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') return;
+                e.preventDefault();
+                this.deleteAtHover();
+            }
+        });
+    }
+    toggle(active) {
+        this.active = active;
+        this.hoverIndicator.visible = active;
+        document.getElementById('editor-panel').classList.toggle('hidden', !active);
+
+        if (active) {
+            this.updateScrubber();
+            this.scrollToRow(this.currentRow);
+            this.syncTopbarFields();
+        }
+    }
+    scrollToRow(r) {
+        const maxRow = this.game.levelData.rows.length - 1;
+        this.currentRow = Math.max(0, Math.min(maxRow, r));
+        document.getElementById('row-slider').value = this.currentRow;
+        document.getElementById('row-display').innerText = `Row: ${this.currentRow}/${maxRow}`;
+        this.updateTempoPreview();
+
+        // 45-degree bird's-eye editor camera
+        const z = -this.currentRow * 2.0;
+        this.game.camera.position.set(0, 8.0, z + 5.5);
+        this.game.camera.lookAt(0, 0, z - 2.5);
+    }
+    updateHover() {
+        if (this.isHoveringUI) {
+            this.hoverIndicator.visible = false;
+            return;
+        }
+        this.raycaster.setFromCamera(this.mouse, this.game.camera);
+        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        const target = new THREE.Vector3();
+        this.raycaster.ray.intersectPlane(plane, target);
+
+        if (target) {
+            const lane = Math.round(target.x / 2.0);
+            const row = Math.round(-target.z / 2.0);
+
+            if (lane >= -2 && lane <= 2 && row >= 0 && row < this.game.levelData.rows.length) {
+                this.hoverIndicator.visible = true;
+                this.hoverIndicator.position.set(lane * 2.0, 0, -row * 2.0);
+                this.hoverLane = lane + 2;
+                this.hoverRow = row;
+                this.updateTempoPreview();
+                return;
+            }
+        }
+        this.hoverIndicator.visible = false;
+        this.hoverLane = null;
+        this.hoverRow = null;
+    }
+    paintAtHover(isErase = false) {
+        if (this.hoverLane === null || this.hoverRow === null) return;
+        const row = this.game.levelData.rows[this.hoverRow];
+        if (!row) return;
+        if (!row.obstacles) row.obstacles = [0, 0, 0, 0, 0];
+        if (!row.tileTempo) row.tileTempo = [0, 0, 0, 0, 0];
+
+        if (this.selectedCategory === 'tile') {
+            const val = isErase ? 0 : this.selectedVal;
+            row.tiles[this.hoverLane] = val;
+            if (val === 8 && !isErase) {
+                row.tileTempo[this.hoverLane] = this.selectedTempoValue;
+            } else {
+                row.tileTempo[this.hoverLane] = 0;
+            }
+        } else if (this.selectedCategory === 'obstacle') {
+            row.obstacles[this.hoverLane] = isErase ? 0 : this.selectedVal;
+        }
+        this.game.level.rebuildMeshes();
+    }
+    deleteAtHover() {
+        if (this.hoverLane === null || this.hoverRow === null) return;
+        const row = this.game.levelData.rows[this.hoverRow];
+        if (!row) return;
+        row.tiles[this.hoverLane] = 0;
+        if (!row.obstacles) row.obstacles = [0, 0, 0, 0, 0];
+        row.obstacles[this.hoverLane] = 0;
+        if (!row.tileTempo) row.tileTempo = [0, 0, 0, 0, 0];
+        row.tileTempo[this.hoverLane] = 0;
+        this.game.level.rebuildMeshes();
+        this.updateTempoPreview();
+    }
+    updateTempoPreview() {
+        const input = document.getElementById('tempo-value-input');
+        const icon = document.getElementById('tempo-preview-icon');
+        const text = document.getElementById('tempo-preview-text');
+        if (!input || !icon || !text) return;
+        let val = parseFloat(input.value);
+        if (isNaN(val)) val = 15;
+        val = Math.max(2, Math.min(40, val));
+        this.selectedTempoValue = val;
+
+        const refRow = (this.hoverRow !== null && this.hoverRow !== undefined) ? this.hoverRow : this.currentRow;
+        const baseTempo = (this.game.levelData && this.game.levelData.baseTempo) || 11;
+        const prev = computeEffectiveTempoBefore(this.game.levelData.rows, baseTempo, refRow);
+        const dir = tempoDirection(val, prev);
+
+        if (dir === 'up') {
+            icon.textContent = '▶▶';
+            icon.style.color = '#00ff88';
+            text.textContent = `Speed UP: ${prev.toFixed(1)} → ${val.toFixed(1)} sq/s`;
+        } else if (dir === 'down') {
+            icon.textContent = '◀◀';
+            icon.style.color = '#ff5577';
+            text.textContent = `Slow DOWN: ${prev.toFixed(1)} → ${val.toFixed(1)} sq/s`;
+        } else {
+            icon.textContent = '➖';
+            icon.style.color = '#aabbcc';
+            text.textContent = `Same tempo: ${val.toFixed(1)} sq/s`;
+        }
+    }
+    fillCurrentRow() {
+        const row = this.game.levelData.rows[this.currentRow];
+        if (row) {
+            row.tiles = [1, 1, 1, 1, 1];
+            row.tileTempo = [0, 0, 0, 0, 0];
+            this.game.level.rebuildMeshes();
+        }
+    }
+    clearCurrentRow() {
+        const row = this.game.levelData.rows[this.currentRow];
+        if (row) {
+            row.tiles = [0, 0, 0, 0, 0];
+            row.obstacles = [0, 0, 0, 0, 0];
+            row.tileTempo = [0, 0, 0, 0, 0];
+            this.game.level.rebuildMeshes();
+        }
+    }
+    duplicateRowAhead() {
+        const cur = this.game.levelData.rows[this.currentRow];
+        const nextRow = this.currentRow + 1;
+        if (cur && nextRow < this.game.levelData.rows.length) {
+            this.game.levelData.rows[nextRow] = JSON.parse(JSON.stringify(cur));
+            this.game.level.rebuildMeshes();
+            this.scrollToRow(nextRow);
+        }
+    }
+    add10Rows() {
+        for (let i = 0; i < 10; i++) {
+            this.game.levelData.rows.push({ tiles: [1, 1, 1, 1, 1], obstacles: [0, 0, 0, 0, 0], tileTempo: [0, 0, 0, 0, 0] });
+        }
+        this.updateScrubber();
+        this.game.level.rebuildMeshes();
+    }
+    clearAll() {
+        if (confirm("Clear all tiles and obstacles in this level?")) {
+            for (let r of this.game.levelData.rows) {
+                r.tiles = [0, 0, 0, 0, 0];
+                r.obstacles = [0, 0, 0, 0, 0];
+                r.tileTempo = [0, 0, 0, 0, 0];
+            }
+            this.game.level.rebuildMeshes();
+        }
+    }
+    updateScrubber() {
+        const maxRow = this.game.levelData.rows.length - 1;
+        const slider = document.getElementById('row-slider');
+        slider.max = maxRow;
+        document.getElementById('row-display').innerText = `Row: ${this.currentRow}/${maxRow}`;
+    }
+    syncTopbarFields() {
+        const baseTempoInput = document.getElementById('base-tempo-input');
+        if (baseTempoInput && this.game.levelData) {
+            baseTempoInput.value = this.game.levelData.baseTempo || 11;
+        }
+        this.updateTempoPreview();
+    }
+    save() {
+        Storage.save(this.game.levelData);
+        alert("Level saved successfully to browser storage!");
+    }
+    openJsonModal() {
+        const modal = document.getElementById('json-modal');
+        const textarea = document.getElementById('json-textarea');
+        textarea.value = JSON.stringify(this.game.levelData, null, 2);
+        modal.classList.add('active');
+
+        document.getElementById('json-copy-btn').onclick = () => {
+            navigator.clipboard.writeText(textarea.value);
+            alert("JSON copied to clipboard!");
+        };
+        document.getElementById('json-load-btn').onclick = () => {
+            try {
+                const parsed = JSON.parse(textarea.value);
+                if (parsed && Array.isArray(parsed.rows)) {
+                    this.game.levelData = normalizeLevelData(parsed);
+                    this.game.level.loadLevel(this.game.levelData);
+                    this.updateScrubber();
+                    this.syncTopbarFields();
+                    modal.classList.remove('active');
+                } else {
+                    alert("Invalid level JSON: missing 'rows' array!");
+                }
+            } catch(e) { alert("Invalid JSON format!"); }
+        };
+        document.getElementById('json-close-btn').onclick = () => {
+            modal.classList.remove('active');
+        };
+    }
+}
