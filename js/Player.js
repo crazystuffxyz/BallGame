@@ -13,9 +13,7 @@ export class Player {
         this.isDead = false;
         this.speedSqS = 11;
 
-        // Depth-space lateral kinematics
         this.targetX = 0;
-        this.velXPerDepth = 0; // dx/ds in tile units per depth unit
 
         this.mesh = this.createBallMesh();
         this.scene.add(this.mesh);
@@ -57,7 +55,6 @@ export class Player {
         const z = -startRow * 2.0;
         this.pos.set(0, this.radius, z);
         this.targetX = 0;
-        this.velXPerDepth = 0;
         this.velY = 0;
         this.isGrounded = true;
         this.isJumping = false;
@@ -86,44 +83,23 @@ export class Player {
         const TILE_HALF = 1.0;
         const shadowRadius = this.radius * 0.45;
 
-        // Forward motion along depth
+        // Forward distance traveled along depth
         const fwdDist = this.speedSqS * TILE_SIZE * delta;
         this.pos.z -= fwdDist;
 
-        // Depth traveled in tile units this frame
-        const deltaS = this.speedSqS * delta;
+        // --- Speed Cap: 5 Width per 1 Depth (No Acceleration Cap) ---
+        // Max lateral distance in world units is 5.0x forward depth
+        const MAX_LATERAL_SPEED_RATIO = 5.0; // 5 width units per 1 depth unit
+        const maxLateralStep = MAX_LATERAL_SPEED_RATIO * fwdDist;
 
-        // --- Depth-Domain Kinematic Physics Solver ---
-        // Invariant to tempo: all velocity & acceleration constraints are in width/depth units
-        if (deltaS > 0.000001) {
-            const currentXTile = this.pos.x / TILE_SIZE;
-            const targetXTile = this.targetX / TILE_SIZE;
-            const deltaX = targetXTile - currentXTile;
+        const deltaX = this.targetX - this.pos.x;
+        const lateralStep = Math.max(-maxLateralStep, Math.min(maxLateralStep, deltaX));
+        this.pos.x = Math.max(-7.0, Math.min(7.0, this.pos.x + lateralStep));
 
-            // Mathematical limits derived from the turnaround parabola x = 5(s - 1)^2 - 5
-            const A_MAX = 10.0; // Max lateral acceleration (width/depth^2)
-            const V_MAX = 10.0; // Max lateral speed (width/depth)
-
-            // Optimal stopping curve in depth space: v_stop = sqrt(2 * a * d)
-            const stoppingSpeed = Math.sqrt(2.0 * A_MAX * Math.abs(deltaX));
-            const desiredVel = Math.sign(deltaX) * Math.min(V_MAX, stoppingSpeed);
-
-            // Accelerate toward desired velocity bounded by A_MAX * deltaS
-            const maxAccelStep = A_MAX * deltaS;
-            const velDiff = desiredVel - this.velXPerDepth;
-            const accelStep = Math.max(-maxAccelStep, Math.min(maxAccelStep, velDiff));
-
-            this.velXPerDepth += accelStep;
-            this.velXPerDepth = Math.max(-V_MAX, Math.min(V_MAX, this.velXPerDepth));
-
-            // Integrate position in depth domain
-            const newXTile = currentXTile + this.velXPerDepth * deltaS;
-            this.pos.x = Math.max(-7.0, Math.min(7.0, newXTile * TILE_SIZE));
-        }
-
-        // Rotational visual feedback
+        // Visual ball roll and bank tilt
         this.sphereMesh.rotation.x -= fwdDist / this.radius;
-        this.sphereMesh.rotation.z = -this.velXPerDepth * 0.15;
+        const lateralSlope = fwdDist > 0.0001 ? (lateralStep / fwdDist) : 0;
+        this.sphereMesh.rotation.z = -lateralSlope * 0.08;
 
         // 7-Lane Collision Detection
         let onSolidGround = false;
