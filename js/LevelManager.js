@@ -8,9 +8,12 @@ export class LevelManager {
         this.gridGroup = new THREE.Group();
         this.obstacleGroup = new THREE.Group();
         this.decorGroup = new THREE.Group();
+        this.editorGridGroup = new THREE.Group(); // Wireframe outlines for empty tiles in editor mode
+        
         this.scene.add(this.gridGroup);
         this.scene.add(this.obstacleGroup);
         this.scene.add(this.decorGroup);
+        this.scene.add(this.editorGridGroup);
 
         this.themeKey = 'sky';
         this.materials = {};
@@ -24,7 +27,7 @@ export class LevelManager {
     }
     initAssets() {
         this.geometries.tile = new THREE.BoxGeometry(2.0, 0.4, 2.0);
-        this.geometries.ball = new THREE.SphereGeometry(0.78, 32, 32); // Scaled 1.3x 
+        this.geometries.ball = new THREE.SphereGeometry(0.78, 32, 32); 
         this.geometries.pyramid = new THREE.ConeGeometry(0.8, 1.8, 4);
         this.geometries.trunk = new THREE.CylinderGeometry(0.2, 0.3, 0.8, 8);
         this.geometries.foliage = new THREE.ConeGeometry(0.9, 1.6, 6);
@@ -34,9 +37,16 @@ export class LevelManager {
         this.geometries.gem = new THREE.OctahedronGeometry(0.45, 0);
         this.geometries.crown = new THREE.CylinderGeometry(0.5, 0.3, 0.4, 5, 1, true);
         
-        // Massive vertical blocker and floating overhead barrier
+        // Massive vertical unjumpable wall & floating overhead ceiling barrier
         this.geometries.wall = new THREE.BoxGeometry(1.8, 8.0, 1.8);
         this.geometries.overheadWall = new THREE.BoxGeometry(1.8, 6.0, 1.8);
+        this.geometries.borderCell = new THREE.EdgesGeometry(new THREE.BoxGeometry(2.0, 0.05, 2.0));
+
+        this.materials.borderCell = new THREE.LineBasicMaterial({
+            color: 0x00f2ff,
+            transparent: true,
+            opacity: 0.18
+        });
 
         this.updateThemeMaterials('sky');
     }
@@ -112,7 +122,6 @@ export class LevelManager {
             side: THREE.DoubleSide
         });
 
-        // Obstacle Walls
         this.materials.wall = new THREE.MeshStandardMaterial({
             color: 0x223344,
             metalness: 0.85,
@@ -171,6 +180,9 @@ export class LevelManager {
         while (this.obstacleGroup.children.length > 0) {
             this.obstacleGroup.remove(this.obstacleGroup.children[0]);
         }
+        while (this.editorGridGroup.children.length > 0) {
+            this.editorGridGroup.remove(this.editorGridGroup.children[0]);
+        }
         this.animatedObs = [];
         this.glassTimers.clear();
 
@@ -182,12 +194,12 @@ export class LevelManager {
 
         for (let r = 0; r < this.levelData.rows.length; r++) {
             const row = this.levelData.rows[r];
-            if (!row.tileTempo) row.tileTempo = [0, 0, 0, 0, 0];
-            if (!row.obstacles) row.obstacles = [0, 0, 0, 0, 0];
+            if (!row.tileTempo) row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
+            if (!row.obstacles) row.obstacles = [0, 0, 0, 0, 0, 0, 0];
             const z = -r * TILE_D;
 
-            for (let c = 0; c < 5; c++) {
-                const lane = c - 2;
+            for (let c = 0; c < 7; c++) {
+                const lane = c - 3; // 7-wide track: c=0 -> -3, c=3 -> 0, c=6 -> +3
                 const x = lane * TILE_W;
                 const tileType = row.tiles[c];
                 const obsType = row.obstacles ? row.obstacles[c] : 0;
@@ -212,6 +224,11 @@ export class LevelManager {
                     mesh.receiveShadow = true;
                     mesh.userData = { row: r, lane: c, tileType: tileType, origY: -0.2 };
                     this.gridGroup.add(mesh);
+                } else {
+                    // Bordered wireframe cell on empty tiles for clear visual grid layout
+                    const borderMesh = new THREE.LineSegments(this.geometries.borderCell, this.materials.borderCell);
+                    borderMesh.position.set(x, -0.2, z);
+                    this.editorGridGroup.add(borderMesh);
                 }
 
                 if (obsType > 0) {
@@ -285,7 +302,7 @@ export class LevelManager {
             group.userData.hitRadius = 0.9;
             this.animatedObs.push({ obj: group, type: 'spin', speed: 2.0 });
         } else if (type === 8) {
-            // Giant Wall (goes 8 units high, unjumpable)
+            // Unjumpable Wall (8 units high)
             const wall = new THREE.Mesh(this.geometries.wall, this.materials.wall);
             wall.position.y = 4.0;
             group.add(wall);
@@ -294,7 +311,7 @@ export class LevelManager {
             group.userData.minY = 0;
             group.userData.maxY = 8.0;
         } else if (type === 9) {
-            // Ceiling / Overhead Wall (floats from Y=2.0 up to Y=8.0; safe to roll under, deadly to jump into)
+            // Ceiling Wall (suspended from Y=2.0 to Y=8.0; safe to roll under, deadly to jump into)
             const overhead = new THREE.Mesh(this.geometries.overheadWall, this.materials.overheadWall);
             overhead.position.y = 5.0;
             const bottomPlate = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.1, 1.8), this.materials.overheadUnder);
@@ -318,11 +335,13 @@ export class LevelManager {
             }
         }
 
+        // Tempo-relative glass falling
         this.glassTimers.forEach((timerData, mesh) => {
             timerData.elapsed += delta;
-            if (timerData.elapsed > 0.2) {
-                mesh.position.y -= delta * 15;
-                mesh.rotation.x += delta * 2;
+            if (timerData.elapsed > timerData.delay) {
+                const fallSpeed = 16.0 * (timerData.tempo / 11.0);
+                mesh.position.y -= delta * fallSpeed;
+                mesh.rotation.x += delta * 2.5 * (timerData.tempo / 11.0);
             }
         });
 
@@ -330,9 +349,12 @@ export class LevelManager {
         this.fadeOpacity = fadeVal > 0.4 ? 0.9 : 0.1;
         this.materials.fadeTile.opacity = this.fadeOpacity;
     }
-    triggerGlass(mesh) {
+    triggerGlass(mesh, currentTempo = 11) {
         if (!this.glassTimers.has(mesh)) {
-            this.glassTimers.set(mesh, { elapsed: 0 });
+            // Delay is calibrated to 0.9 * traverseTime of a single square so depth 1 clears safely, but depth 2 falls
+            const tempo = Math.max(2, currentTempo);
+            const delay = 0.9 / tempo;
+            this.glassTimers.set(mesh, { elapsed: 0, tempo, delay });
         }
     }
 }
