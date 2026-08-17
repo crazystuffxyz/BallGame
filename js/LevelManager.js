@@ -8,7 +8,7 @@ export class LevelManager {
         this.gridGroup = new THREE.Group();
         this.obstacleGroup = new THREE.Group();
         this.decorGroup = new THREE.Group();
-        this.editorGridGroup = new THREE.Group(); // Wireframe outlines for empty tiles in editor mode
+        this.editorGridGroup = new THREE.Group();
         
         this.scene.add(this.gridGroup);
         this.scene.add(this.obstacleGroup);
@@ -22,7 +22,7 @@ export class LevelManager {
         this.initAssets();
 
         this.levelData = null;
-        this.glassTimers = new Map();
+        this.glassSlabs = [];
         this.animatedObs = [];
     }
     initAssets() {
@@ -37,7 +37,6 @@ export class LevelManager {
         this.geometries.gem = new THREE.OctahedronGeometry(0.45, 0);
         this.geometries.crown = new THREE.CylinderGeometry(0.5, 0.3, 0.4, 5, 1, true);
         
-        // Massive vertical unjumpable wall & floating overhead ceiling barrier
         this.geometries.wall = new THREE.BoxGeometry(1.8, 8.0, 1.8);
         this.geometries.overheadWall = new THREE.BoxGeometry(1.8, 6.0, 1.8);
         this.geometries.borderCell = new THREE.EdgesGeometry(new THREE.BoxGeometry(2.0, 0.05, 2.0));
@@ -71,12 +70,6 @@ export class LevelManager {
             map: TextureGen.createJumpTexture('#ffaa00', '#ffffff'),
             emissive: 0xffaa00,
             emissiveIntensity: 0.8
-        });
-        this.materials.glass = new THREE.MeshStandardMaterial({
-            map: TextureGen.createGlassTexture(),
-            transparent: true,
-            opacity: 0.7,
-            roughness: 0.1
         });
         this.materials.speedUp = new THREE.MeshStandardMaterial({
             map: TextureGen.createSpeedTexture('#00ff88', '#ffffff'),
@@ -122,17 +115,26 @@ export class LevelManager {
             side: THREE.DoubleSide
         });
 
+        // 50% Translucent Walls & Ceiling Obstacles
         this.materials.wall = new THREE.MeshStandardMaterial({
             color: 0x223344,
-            metalness: 0.85,
-            roughness: 0.2
+            metalness: 0.6,
+            roughness: 0.2,
+            transparent: true,
+            opacity: 0.5
         });
         this.materials.overheadWall = new THREE.MeshStandardMaterial({
             color: 0x3d1428,
-            metalness: 0.8,
-            roughness: 0.25
+            metalness: 0.6,
+            roughness: 0.25,
+            transparent: true,
+            opacity: 0.5
         });
-        this.materials.overheadUnder = new THREE.MeshBasicMaterial({ color: 0xff0066 });
+        this.materials.overheadUnder = new THREE.MeshBasicMaterial({ 
+            color: 0xff0066,
+            transparent: true,
+            opacity: 0.5
+        });
 
         this.buildDecorations();
     }
@@ -168,6 +170,26 @@ export class LevelManager {
             roughness: 0.3
         });
     }
+    createGlassSlabMaterial(w, d) {
+        // Creates a seamless custom-sized glass slab material with constant border width
+        const cv = document.createElement('canvas');
+        cv.width = Math.max(64, Math.round(w * 32));
+        cv.height = Math.max(64, Math.round(d * 32));
+        const ctx = cv.getContext('2d');
+        ctx.fillStyle = 'rgba(180, 230, 255, 0.45)';
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = '#ffffff';
+        ctx.strokeRect(3, 3, cv.width - 6, cv.height - 6);
+        
+        const tex = new THREE.CanvasTexture(cv);
+        return new THREE.MeshStandardMaterial({
+            map: tex,
+            transparent: true,
+            opacity: 0.75,
+            roughness: 0.1
+        });
+    }
     loadLevel(levelData) {
         this.levelData = normalizeLevelData(levelData);
         this.updateThemeMaterials(this.levelData.theme || 'sky');
@@ -184,13 +206,14 @@ export class LevelManager {
             this.editorGridGroup.remove(this.editorGridGroup.children[0]);
         }
         this.animatedObs = [];
-        this.glassTimers.clear();
+        this.glassSlabs = [];
 
         if (!this.levelData || !this.levelData.rows) return;
 
         const TILE_W = 2.0;
         const TILE_D = 2.0;
         const baseTempo = this.levelData.baseTempo || 11;
+        const visitedGlass = new Set();
 
         for (let r = 0; r < this.levelData.rows.length; r++) {
             const row = this.levelData.rows[r];
@@ -199,16 +222,72 @@ export class LevelManager {
             const z = -r * TILE_D;
 
             for (let c = 0; c < 7; c++) {
-                const lane = c - 3; // 7-wide track: c=0 -> -3, c=3 -> 0, c=6 -> +3
+                const lane = c - 3;
                 const x = lane * TILE_W;
                 const tileType = row.tiles[c];
                 const obsType = row.obstacles ? row.obstacles[c] : 0;
 
-                if (tileType > 0) {
+                if (tileType === 4) {
+                    const key = `${r},${c}`;
+                    if (!visitedGlass.has(key)) {
+                        // Find connected glass dimensions W x D
+                        let gw = 1;
+                        while (c + gw < 7 && row.tiles[c + gw] === 4 && !visitedGlass.has(`${r},${c + gw}`)) {
+                            gw++;
+                        }
+                        let gd = 1;
+                        while (r + gd < this.levelData.rows.length) {
+                            let match = true;
+                            for (let dc = 0; dc < gw; dc++) {
+                                if (this.levelData.rows[r + gd].tiles[c + dc] !== 4 || visitedGlass.has(`${r + gd},${c + dc}`)) {
+                                    match = false;
+                                    break;
+                                }
+                            }
+                            if (!match) break;
+                            gd++;
+                        }
+
+                        for (let dr = 0; dr < gd; dr++) {
+                            for (let dc = 0; dc < gw; dc++) {
+                                visitedGlass.add(`${r + dr},${c + dc}`);
+                            }
+                        }
+
+                        // Create single contiguous glass mesh
+                        const slabGeo = new THREE.BoxGeometry(gw * TILE_W, 0.4, gd * TILE_D);
+                        const slabMat = this.createGlassSlabMaterial(gw, gd);
+                        const slabMesh = new THREE.Mesh(slabGeo, slabMat);
+                        
+                        const centerX = x + ((gw - 1) * TILE_W) / 2;
+                        const centerZ = z - ((gd - 1) * TILE_D) / 2;
+                        slabMesh.position.set(centerX, -0.2, centerZ);
+                        slabMesh.receiveShadow = true;
+
+                        const slabData = {
+                            mesh: slabMesh,
+                            startRow: r,
+                            startCol: c,
+                            width: gw,
+                            depth: gd,
+                            minX: centerX - (gw * TILE_W) / 2,
+                            maxX: centerX + (gw * TILE_W) / 2,
+                            minZ: centerZ - (gd * TILE_D) / 2,
+                            maxZ: centerZ + (gd * TILE_D) / 2,
+                            triggered: false,
+                            entryZ: null,
+                            isSolid: true,
+                            fallProgress: 0
+                        };
+                        
+                        slabMesh.userData = slabData;
+                        this.glassSlabs.push(slabData);
+                        this.gridGroup.add(slabMesh);
+                    }
+                } else if (tileType > 0) {
                     let mat = this.materials.floor;
                     if (tileType === 2) mat = this.materials.jump;
                     else if (tileType === 3) mat = this.materials.bigJump;
-                    else if (tileType === 4) mat = this.materials.glass;
                     else if (tileType === 5) mat = this.materials.speedUp;
                     else if (tileType === 6) mat = this.materials.speedDown;
                     else if (tileType === 7) mat = this.materials.fadeTile;
@@ -225,7 +304,6 @@ export class LevelManager {
                     mesh.userData = { row: r, lane: c, tileType: tileType, origY: -0.2 };
                     this.gridGroup.add(mesh);
                 } else {
-                    // Bordered wireframe cell on empty tiles for clear visual grid layout
                     const borderMesh = new THREE.LineSegments(this.geometries.borderCell, this.materials.borderCell);
                     borderMesh.position.set(x, -0.2, z);
                     this.editorGridGroup.add(borderMesh);
@@ -302,7 +380,6 @@ export class LevelManager {
             group.userData.hitRadius = 0.9;
             this.animatedObs.push({ obj: group, type: 'spin', speed: 2.0 });
         } else if (type === 8) {
-            // Unjumpable Wall (8 units high)
             const wall = new THREE.Mesh(this.geometries.wall, this.materials.wall);
             wall.position.y = 4.0;
             group.add(wall);
@@ -311,7 +388,6 @@ export class LevelManager {
             group.userData.minY = 0;
             group.userData.maxY = 8.0;
         } else if (type === 9) {
-            // Ceiling Wall (suspended from Y=2.0 to Y=8.0; safe to roll under, deadly to jump into)
             const overhead = new THREE.Mesh(this.geometries.overheadWall, this.materials.overheadWall);
             overhead.position.y = 5.0;
             const bottomPlate = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.1, 1.8), this.materials.overheadUnder);
@@ -335,26 +411,16 @@ export class LevelManager {
             }
         }
 
-        // Tempo-relative glass falling
-        this.glassTimers.forEach((timerData, mesh) => {
-            timerData.elapsed += delta;
-            if (timerData.elapsed > timerData.delay) {
-                const fallSpeed = 16.0 * (timerData.tempo / 11.0);
-                mesh.position.y -= delta * fallSpeed;
-                mesh.rotation.x += delta * 2.5 * (timerData.tempo / 11.0);
+        // Animate falling glass slabs
+        for (let slab of this.glassSlabs) {
+            if (!slab.isSolid) {
+                slab.mesh.position.y -= delta * 18.0;
+                slab.mesh.rotation.x += delta * 3.0;
             }
-        });
+        }
 
         const fadeVal = (Math.sin(time * 4) + 1) / 2;
         this.fadeOpacity = fadeVal > 0.4 ? 0.9 : 0.1;
         this.materials.fadeTile.opacity = this.fadeOpacity;
-    }
-    triggerGlass(mesh, currentTempo = 11) {
-        if (!this.glassTimers.has(mesh)) {
-            // Delay is calibrated to 0.9 * traverseTime of a single square so depth 1 clears safely, but depth 2 falls
-            const tempo = Math.max(2, currentTempo);
-            const delay = 0.9 / tempo;
-            this.glassTimers.set(mesh, { elapsed: 0, tempo, delay });
-        }
     }
 }
