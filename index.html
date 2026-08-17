@@ -116,6 +116,12 @@
                             <button class="tool-btn" data-category="tile" data-val="7"><span class="icon">✨</span>Fade Tile</button>
                             <button class="tool-btn" data-category="tile" data-val="0"><span class="icon">⬛</span>Void (Erase)</button>
                         </div>
+                        <!-- Glass Customization Settings -->
+                        <div id="glass-settings" style="margin-top: 8px; background: #0d1527; padding: 6px 8px; border-radius: 6px; border: 1px solid rgba(0,242,255,0.25); display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 11px;">
+                            <span>🪟 Glass Size:</span>
+                            <label style="display:flex; align-items:center; gap:2px;">W: <input type="number" id="glass-w-input" class="editor-input" min="1" max="7" value="1" style="width:38px; padding:2px 4px; font-size:11px;"></label>
+                            <label style="display:flex; align-items:center; gap:2px;">D: <input type="number" id="glass-d-input" class="editor-input" min="1" max="10" value="1" style="width:38px; padding:2px 4px; font-size:11px;"></label>
+                        </div>
                     </div>
 
                     <!-- Obstacles Tab -->
@@ -153,7 +159,7 @@
                     <!-- Tools Tab -->
                     <div id="tab-tools" class="tab-content">
                         <div style="display:flex; flex-direction:column; gap:6px;">
-                            <button id="ed-fill-row-btn" class="tool-btn">Fill Row (5 Tiles)</button>
+                            <button id="ed-fill-row-btn" class="tool-btn">Fill Row (7 Tiles)</button>
                             <button id="ed-clear-row-btn" class="tool-btn">Clear Row</button>
                             <button id="ed-add-10rows-btn" class="tool-btn">+ Add 10 Rows</button>
                             <button id="ed-dup-row-btn" class="tool-btn">Duplicate Row Ahead</button>
