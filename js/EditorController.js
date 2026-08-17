@@ -13,7 +13,6 @@ export class EditorController {
         this.isPainting = false;
         this.isHoveringUI = false;
 
-        // Mobile/Touch Toggle State
         this.interactionMode = 'paint';
 
         this.isPanningTrack = false;
@@ -116,7 +115,6 @@ export class EditorController {
         document.getElementById('step-next-1').onclick = (e) => { e.stopPropagation(); this.scrollToRow(this.currentRow + 1); };
         document.getElementById('step-next-10').onclick = (e) => { e.stopPropagation(); this.scrollToRow(this.currentRow + 10); };
 
-        // Mobile/Desktop Play Buttons
         const playFn = () => this.game.startPlay(this.currentRow);
         const playStartFn = () => this.game.startPlay(0);
         document.getElementById('ed-play-btn').onclick = playFn;
@@ -153,7 +151,6 @@ export class EditorController {
             tempoValueInput.addEventListener('input', () => this.updateTempoPreview());
         }
 
-        // Interaction Mode Toggle (Pan / Paint)
         const modeToggleBtn = document.getElementById('ed-mode-toggle');
         modeToggleBtn.onclick = (e) => {
             e.stopPropagation();
@@ -268,7 +265,6 @@ export class EditorController {
         document.getElementById('row-display').innerText = `Row: ${this.currentRow}/${maxRow}`;
         this.updateTempoPreview();
 
-        // 45-degree bird's-eye editor camera
         const z = -this.currentRow * 2.0;
         this.game.camera.position.set(0, 8.0, z + 5.5);
         this.game.camera.lookAt(0, 0, z - 2.5);
@@ -287,10 +283,10 @@ export class EditorController {
             const lane = Math.round(target.x / 2.0);
             const row = Math.round(-target.z / 2.0);
 
-            if (lane >= -2 && lane <= 2 && row >= 0 && row < this.game.levelData.rows.length) {
+            if (lane >= -3 && lane <= 3 && row >= 0 && row < this.game.levelData.rows.length) {
                 this.hoverIndicator.visible = true;
                 this.hoverIndicator.position.set(lane * 2.0, 0, -row * 2.0);
-                this.hoverLane = lane + 2;
+                this.hoverLane = lane + 3; // 7-lane index 0..6
                 this.hoverRow = row;
                 this.updateTempoPreview();
                 return;
@@ -304,32 +300,51 @@ export class EditorController {
         if (this.hoverLane === null || this.hoverRow === null) return;
         const row = this.game.levelData.rows[this.hoverRow];
         if (!row) return;
-        if (!row.obstacles) row.obstacles = [0, 0, 0, 0, 0];
-        if (!row.tileTempo) row.tileTempo = [0, 0, 0, 0, 0];
+        if (!row.obstacles) row.obstacles = [0, 0, 0, 0, 0, 0, 0];
+        if (!row.tileTempo) row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
 
         if (this.selectedCategory === 'tile') {
-            const val = isErase ? 0 : this.selectedVal;
-            row.tiles[this.hoverLane] = val;
-            if (val === 8 && !isErase) {
-                row.tileTempo[this.hoverLane] = this.selectedTempoValue;
+            // Glass Custom Size Placement
+            if (this.selectedVal === 4 && !isErase) {
+                const gw = parseInt(document.getElementById('glass-w-input')?.value || 1);
+                const gd = parseInt(document.getElementById('glass-d-input')?.value || 1);
+                for (let dr = 0; dr < gd; dr++) {
+                    const r = this.hoverRow + dr;
+                    if (r >= this.game.levelData.rows.length) break;
+                    const targetRow = this.game.levelData.rows[r];
+                    for (let dc = 0; dc < gw; dc++) {
+                        const c = this.hoverLane + dc;
+                        if (c >= 7) break;
+                        targetRow.tiles[c] = 4;
+                        targetRow.tileTempo[c] = 0;
+                    }
+                }
             } else {
-                row.tileTempo[this.hoverLane] = 0;
+                const val = isErase ? 0 : this.selectedVal;
+                row.tiles[this.hoverLane] = val;
+                if (val === 8 && !isErase) {
+                    row.tileTempo[this.hoverLane] = this.selectedTempoValue;
+                } else {
+                    row.tileTempo[this.hoverLane] = 0;
+                }
             }
         } else if (this.selectedCategory === 'obstacle') {
             row.obstacles[this.hoverLane] = isErase ? 0 : this.selectedVal;
         }
         this.game.level.rebuildMeshes();
+        this.game.countCollectibles();
     }
     deleteAtHover() {
         if (this.hoverLane === null || this.hoverRow === null) return;
         const row = this.game.levelData.rows[this.hoverRow];
         if (!row) return;
         row.tiles[this.hoverLane] = 0;
-        if (!row.obstacles) row.obstacles = [0, 0, 0, 0, 0];
+        if (!row.obstacles) row.obstacles = [0, 0, 0, 0, 0, 0, 0];
         row.obstacles[this.hoverLane] = 0;
-        if (!row.tileTempo) row.tileTempo = [0, 0, 0, 0, 0];
+        if (!row.tileTempo) row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
         row.tileTempo[this.hoverLane] = 0;
         this.game.level.rebuildMeshes();
+        this.game.countCollectibles();
         this.updateTempoPreview();
     }
     updateTempoPreview() {
@@ -364,18 +379,19 @@ export class EditorController {
     fillCurrentRow() {
         const row = this.game.levelData.rows[this.currentRow];
         if (row) {
-            row.tiles = [1, 1, 1, 1, 1];
-            row.tileTempo = [0, 0, 0, 0, 0];
+            row.tiles = [1, 1, 1, 1, 1, 1, 1];
+            row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
             this.game.level.rebuildMeshes();
         }
     }
     clearCurrentRow() {
         const row = this.game.levelData.rows[this.currentRow];
         if (row) {
-            row.tiles = [0, 0, 0, 0, 0];
-            row.obstacles = [0, 0, 0, 0, 0];
-            row.tileTempo = [0, 0, 0, 0, 0];
+            row.tiles = [0, 0, 0, 0, 0, 0, 0];
+            row.obstacles = [0, 0, 0, 0, 0, 0, 0];
+            row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
             this.game.level.rebuildMeshes();
+            this.game.countCollectibles();
         }
     }
     duplicateRowAhead() {
@@ -384,12 +400,13 @@ export class EditorController {
         if (cur && nextRow < this.game.levelData.rows.length) {
             this.game.levelData.rows[nextRow] = JSON.parse(JSON.stringify(cur));
             this.game.level.rebuildMeshes();
+            this.game.countCollectibles();
             this.scrollToRow(nextRow);
         }
     }
     add10Rows() {
         for (let i = 0; i < 10; i++) {
-            this.game.levelData.rows.push({ tiles: [1, 1, 1, 1, 1], obstacles: [0, 0, 0, 0, 0], tileTempo: [0, 0, 0, 0, 0] });
+            this.game.levelData.rows.push({ tiles: [1, 1, 1, 1, 1, 1, 1], obstacles: [0, 0, 0, 0, 0, 0, 0], tileTempo: [0, 0, 0, 0, 0, 0, 0] });
         }
         this.updateScrubber();
         this.game.level.rebuildMeshes();
@@ -397,11 +414,12 @@ export class EditorController {
     clearAll() {
         if (confirm("Clear all tiles and obstacles in this level?")) {
             for (let r of this.game.levelData.rows) {
-                r.tiles = [0, 0, 0, 0, 0];
-                r.obstacles = [0, 0, 0, 0, 0];
-                r.tileTempo = [0, 0, 0, 0, 0];
+                r.tiles = [0, 0, 0, 0, 0, 0, 0];
+                r.obstacles = [0, 0, 0, 0, 0, 0, 0];
+                r.tileTempo = [0, 0, 0, 0, 0, 0, 0];
             }
             this.game.level.rebuildMeshes();
+            this.game.countCollectibles();
         }
     }
     updateScrubber() {
@@ -439,6 +457,7 @@ export class EditorController {
                     this.game.level.loadLevel(this.game.levelData);
                     this.updateScrubber();
                     this.syncTopbarFields();
+                    this.game.countCollectibles();
                     modal.classList.remove('active');
                 } else {
                     alert("Invalid level JSON: missing 'rows' array!");
