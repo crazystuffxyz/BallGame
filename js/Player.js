@@ -43,8 +43,6 @@ export class Player {
         return group;
     }
     createShadow() {
-        // Radius is 1/2 of footprint target (0.45 * radius), reducing area to 1/4
-        // Since this.radius scales up 1.3x, the shadow implicitly scales up 1.3x as well.
         const geo = new THREE.CircleGeometry(this.radius * 0.45, 24);
         geo.rotateX(-Math.PI / 2);
         const mat = new THREE.MeshBasicMaterial({
@@ -85,19 +83,18 @@ export class Player {
 
         const TILE_SIZE = 2.0;
         const TILE_HALF = 1.0;
-        // Margin is 1/2 radius (0.45), giving 1/4 area footprint for tight diagonal precision
         const shadowRadius = this.radius * 0.45;
 
         const fwdDist = this.speedSqS * TILE_SIZE * delta;
         this.pos.z -= fwdDist;
 
         this.currentX += (this.targetX - this.currentX) * 20 * delta;
-        this.pos.x = Math.max(-5.5, Math.min(5.5, this.currentX));
+        this.pos.x = Math.max(-7.0, Math.min(7.0, this.currentX));
 
         this.sphereMesh.rotation.x -= fwdDist / this.radius;
         this.sphereMesh.rotation.z = -(this.targetX - this.currentX) * 1.5;
 
-        // --- Footprint / Shadow Geometric Collision Checking ---
+        // 7-Lane Collision Detection
         let onSolidGround = false;
         let primaryTileType = 0;
         let closestDistSq = Infinity;
@@ -108,8 +105,8 @@ export class Player {
             const rowsLen = level.levelData.rows.length;
             const rMin = Math.max(0, Math.floor((-this.pos.z - shadowRadius + TILE_HALF) / TILE_SIZE));
             const rMax = Math.min(rowsLen - 1, Math.floor((-this.pos.z + shadowRadius + TILE_HALF) / TILE_SIZE));
-            const cMin = Math.max(0, Math.floor((this.pos.x - shadowRadius + 5.0) / TILE_SIZE));
-            const cMax = Math.min(4, Math.floor((this.pos.x + shadowRadius + 5.0) / TILE_SIZE));
+            const cMin = Math.max(0, Math.floor((this.pos.x - shadowRadius + 7.0) / TILE_SIZE));
+            const cMax = Math.min(6, Math.floor((this.pos.x + shadowRadius + 7.0) / TILE_SIZE));
 
             for (let r = rMin; r <= rMax; r++) {
                 const row = level.levelData.rows[r];
@@ -122,18 +119,16 @@ export class Player {
                     const tileType = row.tiles[c];
                     if (tileType === 0) continue; // Void tile
 
-                    const tileX = (c - 2) * TILE_SIZE;
+                    const tileX = (c - 3) * TILE_SIZE;
                     const minX = tileX - TILE_HALF;
                     const maxX = tileX + TILE_HALF;
 
-                    // Closest point on tile AABB to sphere center
                     const clampX = Math.max(minX, Math.min(this.pos.x, maxX));
                     const clampZ = Math.max(minZ, Math.min(this.pos.z, maxZ));
                     const dx = this.pos.x - clampX;
                     const dz = this.pos.z - clampZ;
                     const distSq = dx * dx + dz * dz;
 
-                    // Shadow footprint touching check
                     if (distSq <= shadowRadius * shadowRadius) {
                         let tileIsSolid = true;
                         if (tileType === 4) { // Glass tile
@@ -160,7 +155,6 @@ export class Player {
                 }
             }
 
-            // Keep player supported if crossing the final row
             const finishZ = -(rowsLen - 1) * TILE_SIZE;
             if (this.pos.z <= finishZ && !onSolidGround) {
                 const lastRow = level.levelData.rows[rowsLen - 1];
@@ -187,11 +181,10 @@ export class Player {
             }
             else if (type === 4) {
                 const tm = level.gridGroup.children.find(m => m.userData.row === r && m.userData.lane === c);
-                if (tm) level.triggerGlass(tm);
+                if (tm) level.triggerGlass(tm, this.speedSqS);
             }
         };
 
-        // Void Detection & Falling State
         if (!this.isJumping) {
             if (!onSolidGround) {
                 this.isFallingIntoVoid = true;
@@ -208,7 +201,6 @@ export class Player {
             this.velY -= gravity * delta;
             this.pos.y += this.velY * delta;
 
-            // Landing Check on Descent
             if (this.pos.y <= this.radius && this.velY <= 0) {
                 if (onSolidGround) {
                     this.pos.y = this.radius;
@@ -222,7 +214,6 @@ export class Player {
                 }
             }
         } else {
-            // Rolling on solid ground
             this.pos.y = this.radius;
             this.velY = 0;
             this.isGrounded = true;
