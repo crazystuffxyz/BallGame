@@ -13,7 +13,10 @@ export class Player {
         this.isDead = false;
         this.speedSqS = 11;
 
+        // 3rd-order Jerk-Limited Depth Kinematics
         this.targetX = 0;
+        this.velX = 0;   // Lateral velocity per depth (dx/ds in width/depth)
+        this.accelX = 0; // Lateral acceleration per depth (d^2x/ds^2 in width/depth^2)
 
         this.mesh = this.createBallMesh();
         this.scene.add(this.mesh);
@@ -55,6 +58,8 @@ export class Player {
         const z = -startRow * 2.0;
         this.pos.set(0, this.radius, z);
         this.targetX = 0;
+        this.velX = 0;
+        this.accelX = 0;
         this.velY = 0;
         this.isGrounded = true;
         this.isJumping = false;
@@ -83,23 +88,60 @@ export class Player {
         const TILE_HALF = 1.0;
         const shadowRadius = this.radius * 0.45;
 
-        // Forward distance traveled along depth
+        // Forward distance along depth
         const fwdDist = this.speedSqS * TILE_SIZE * delta;
         this.pos.z -= fwdDist;
 
-        // --- Speed Cap: 5 Width per 1 Depth (No Acceleration Cap) ---
-        // Max lateral distance in world units is 5.0x forward depth
-        const MAX_LATERAL_SPEED_RATIO = 5.0; // 5 width units per 1 depth unit
-        const maxLateralStep = MAX_LATERAL_SPEED_RATIO * fwdDist;
+        // Total depth in tile units traversed this frame
+        const deltaS = this.speedSqS * delta;
 
-        const deltaX = this.targetX - this.pos.x;
-        const lateralStep = Math.max(-maxLateralStep, Math.min(maxLateralStep, deltaX));
-        this.pos.x = Math.max(-7.0, Math.min(7.0, this.pos.x + lateralStep));
+        // --- 3rd-Order Jerk-Limited S-Curve Kinematic Solver ---
+        // Constants analytically derived from 15 swings per 11 depth at width 3
+        const V_MAX = 5.0;     // Max speed (width/depth)
+        const A_MAX = 75.0;    // Max acceleration (width/depth^2)
+        const J_MAX = 1125.0;  // Max jerk (width/depth^3)
+        const TAU_A = A_MAX / J_MAX; // 1/15 depth unit acceleration time constant
 
-        // Visual ball roll and bank tilt
+        if (deltaS > 0.000001) {
+            // High-precision sub-stepping ensures zero numerical drift across any frame rate
+            const maxSubStep = 0.005;
+            const subSteps = Math.max(1, Math.ceil(deltaS / maxSubStep));
+            const ds = deltaS / subSteps;
+
+            let currentTileX = this.pos.x / TILE_SIZE;
+            const targetTileX = this.targetX / TILE_SIZE;
+
+            for (let i = 0; i < subSteps; i++) {
+                const deltaX = targetTileX - currentTileX;
+
+                // Optimal depth-domain braking velocity
+                const stoppingSpeed = Math.sqrt(2.0 * A_MAX * Math.abs(deltaX));
+                const desiredVel = Math.sign(deltaX) * Math.min(V_MAX, stoppingSpeed);
+
+                // Desired acceleration bounded by A_MAX
+                const desiredAccel = Math.max(-A_MAX, Math.min(A_MAX, (desiredVel - this.velX) / TAU_A));
+
+                // Apply bounded jerk to adjust acceleration
+                const maxJerkStep = J_MAX * ds;
+                const accelDiff = desiredAccel - this.accelX;
+                const jerkStep = Math.max(-maxJerkStep, Math.min(maxJerkStep, accelDiff));
+
+                this.accelX += jerkStep;
+                this.accelX = Math.max(-A_MAX, Math.min(A_MAX, this.accelX));
+
+                // Integrate velocity and position
+                this.velX += this.accelX * ds;
+                this.velX = Math.max(-V_MAX, Math.min(V_MAX, this.velX));
+
+                currentTileX += this.velX * ds;
+            }
+
+            this.pos.x = Math.max(-7.0, Math.min(7.0, currentTileX * TILE_SIZE));
+        }
+
+        // Visual ball roll and organic banking tilt
         this.sphereMesh.rotation.x -= fwdDist / this.radius;
-        const lateralSlope = fwdDist > 0.0001 ? (lateralStep / fwdDist) : 0;
-        this.sphereMesh.rotation.z = -lateralSlope * 0.08;
+        this.sphereMesh.rotation.z = -this.velX * 0.08 - this.accelX * 0.002;
 
         // 7-Lane Collision Detection
         let onSolidGround = false;
