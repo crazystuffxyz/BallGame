@@ -33,6 +33,10 @@ export class LevelManager {
         this.geometries.hammerHead = new THREE.BoxGeometry(1.6, 0.8, 0.8);
         this.geometries.gem = new THREE.OctahedronGeometry(0.45, 0);
         this.geometries.crown = new THREE.CylinderGeometry(0.5, 0.3, 0.4, 5, 1, true);
+        
+        // Massive vertical blocker and floating overhead barrier
+        this.geometries.wall = new THREE.BoxGeometry(1.8, 8.0, 1.8);
+        this.geometries.overheadWall = new THREE.BoxGeometry(1.8, 6.0, 1.8);
 
         this.updateThemeMaterials('sky');
     }
@@ -107,6 +111,19 @@ export class LevelManager {
             roughness: 0.2,
             side: THREE.DoubleSide
         });
+
+        // Obstacle Walls
+        this.materials.wall = new THREE.MeshStandardMaterial({
+            color: 0x223344,
+            metalness: 0.85,
+            roughness: 0.2
+        });
+        this.materials.overheadWall = new THREE.MeshStandardMaterial({
+            color: 0x3d1428,
+            metalness: 0.8,
+            roughness: 0.25
+        });
+        this.materials.overheadUnder = new THREE.MeshBasicMaterial({ color: 0xff0066 });
 
         this.buildDecorations();
     }
@@ -267,6 +284,26 @@ export class LevelManager {
             group.userData.isCrown = true;
             group.userData.hitRadius = 0.9;
             this.animatedObs.push({ obj: group, type: 'spin', speed: 2.0 });
+        } else if (type === 8) {
+            // Giant Wall (goes 8 units high, unjumpable)
+            const wall = new THREE.Mesh(this.geometries.wall, this.materials.wall);
+            wall.position.y = 4.0;
+            group.add(wall);
+            group.userData.hitRadius = 0.9;
+            group.userData.isWall = true;
+            group.userData.minY = 0;
+            group.userData.maxY = 8.0;
+        } else if (type === 9) {
+            // Ceiling / Overhead Wall (floats from Y=2.0 up to Y=8.0; safe to roll under, deadly to jump into)
+            const overhead = new THREE.Mesh(this.geometries.overheadWall, this.materials.overheadWall);
+            overhead.position.y = 5.0;
+            const bottomPlate = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.1, 1.8), this.materials.overheadUnder);
+            bottomPlate.position.y = 2.0;
+            group.add(overhead, bottomPlate);
+            group.userData.hitRadius = 0.9;
+            group.userData.isOverhead = true;
+            group.userData.minY = 1.95;
+            group.userData.maxY = 8.0;
         }
         return group;
     }
