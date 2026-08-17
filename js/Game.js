@@ -89,10 +89,10 @@ export class Game {
         let isDragging = false;
 
         const updateTargetX = (clientX) => {
-            // Absolute touch/mouse map tracking: Map exact screen width to track width [-5.0, 5.0]
+            // Absolute touch/mouse map tracking: Map exact screen width to 7-lane track width [-7.0, 7.0]
             const normalizedX = clientX / window.innerWidth;
-            this.player.targetX = normalizedX * 10.0 - 5.0;
-            this.player.targetX = Math.max(-5.0, Math.min(5.0, this.player.targetX));
+            this.player.targetX = normalizedX * 14.0 - 7.0;
+            this.player.targetX = Math.max(-7.0, Math.min(7.0, this.player.targetX));
         };
 
         const onDown = (clientX) => {
@@ -151,11 +151,13 @@ export class Game {
             this.sound.stopMusic();
             this.player.mesh.visible = false;
             this.player.shadow.visible = false;
+            if (this.level.editorGridGroup) this.level.editorGridGroup.visible = true;
             this.editor.toggle(true);
             document.getElementById('hud-top').style.display = 'none';
             document.getElementById('mode-toggle-btn').innerText = "▶️ Play Level";
         } else {
             this.editor.toggle(false);
+            if (this.level.editorGridGroup) this.level.editorGridGroup.visible = false;
             this.player.mesh.visible = true;
             this.player.shadow.visible = true;
             document.getElementById('hud-top').style.display = 'flex';
@@ -308,7 +310,7 @@ export class Game {
             if (window.keys) {
                 if (window.keys['ArrowLeft'] || window.keys['KeyA']) this.player.targetX -= 14.0 * delta;
                 if (window.keys['ArrowRight'] || window.keys['KeyD']) this.player.targetX += 14.0 * delta;
-                this.player.targetX = Math.max(-5.0, Math.min(5.0, this.player.targetX));
+                this.player.targetX = Math.max(-7.0, Math.min(7.0, this.player.targetX));
             }
 
             this.player.update(delta, this.level);
