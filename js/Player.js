@@ -13,10 +13,15 @@ export class Player {
         this.isDead = false;
         this.speedSqS = 11;
 
-        // 3rd-order Jerk-Limited Depth Kinematics
         this.targetX = 0;
-        this.velX = 0;   // Lateral velocity per depth (dx/ds in width/depth)
-        this.accelX = 0; // Lateral acceleration per depth (d^2x/ds^2 in width/depth^2)
+        this.velX = 0;
+        this.accelX = 0;
+
+        // Depth-Domain Jump Pad Parabolic Trajectory
+        this.isPadJumping = false;
+        this.padJumpStartS = 0;
+        this.padJumpTargetDistance = 4.0; // In tiles (4 for jump pad, 8 for big jump pad)
+        this.padJumpHeight = 3.2;
 
         this.mesh = this.createBallMesh();
         this.scene.add(this.mesh);
@@ -63,6 +68,7 @@ export class Player {
         this.velY = 0;
         this.isGrounded = true;
         this.isJumping = false;
+        this.isPadJumping = false;
         this.isFallingIntoVoid = false;
         this.isDead = false;
         this.speedSqS = Math.max(2, Math.min(40, (typeof baseTempo === 'number' && !isNaN(baseTempo)) ? baseTempo : 11));
@@ -70,11 +76,14 @@ export class Player {
         this.shadow.visible = true;
         this.mesh.position.copy(this.pos);
     }
-    jump(power = 12.0) {
+    startPadJump(distanceTiles, height = 3.2) {
         if (this.isFallingIntoVoid) return;
-        this.velY = power;
+        this.isPadJumping = true;
+        this.isJumping = false;
         this.isGrounded = false;
-        this.isJumping = true;
+        this.padJumpStartS = -this.pos.z / 2.0;
+        this.padJumpTargetDistance = distanceTiles;
+        this.padJumpHeight = height;
         this.sound.playJump();
     }
     applyTempoTile(targetSqS) {
@@ -88,22 +97,20 @@ export class Player {
         const TILE_HALF = 1.0;
         const shadowRadius = this.radius * 0.45;
 
-        // Forward distance along depth
+        // Forward motion along depth
         const fwdDist = this.speedSqS * TILE_SIZE * delta;
         this.pos.z -= fwdDist;
 
-        // Total depth in tile units traversed this frame
+        // Depth in tile units traversed this frame
         const deltaS = this.speedSqS * delta;
 
-        // --- 3rd-Order Jerk-Limited S-Curve Kinematic Solver ---
-        // Constants analytically derived from 15 swings per 11 depth at width 3
-        const V_MAX = 5.0;     // Max speed (width/depth)
-        const A_MAX = 75.0;    // Max acceleration (width/depth^2)
-        const J_MAX = 1125.0;  // Max jerk (width/depth^3)
-        const TAU_A = A_MAX / J_MAX; // 1/15 depth unit acceleration time constant
+        // Kinematic S-Curve Lateral Controller
+        const V_MAX = 5.0;
+        const A_MAX = 75.0;
+        const J_MAX = 1125.0;
+        const TAU_A = A_MAX / J_MAX;
 
         if (deltaS > 0.000001) {
-            // High-precision sub-stepping ensures zero numerical drift across any frame rate
             const maxSubStep = 0.005;
             const subSteps = Math.max(1, Math.ceil(deltaS / maxSubStep));
             const ds = deltaS / subSteps;
@@ -113,15 +120,10 @@ export class Player {
 
             for (let i = 0; i < subSteps; i++) {
                 const deltaX = targetTileX - currentTileX;
-
-                // Optimal depth-domain braking velocity
                 const stoppingSpeed = Math.sqrt(2.0 * A_MAX * Math.abs(deltaX));
                 const desiredVel = Math.sign(deltaX) * Math.min(V_MAX, stoppingSpeed);
-
-                // Desired acceleration bounded by A_MAX
                 const desiredAccel = Math.max(-A_MAX, Math.min(A_MAX, (desiredVel - this.velX) / TAU_A));
 
-                // Apply bounded jerk to adjust acceleration
                 const maxJerkStep = J_MAX * ds;
                 const accelDiff = desiredAccel - this.accelX;
                 const jerkStep = Math.max(-maxJerkStep, Math.min(maxJerkStep, accelDiff));
@@ -129,7 +131,6 @@ export class Player {
                 this.accelX += jerkStep;
                 this.accelX = Math.max(-A_MAX, Math.min(A_MAX, this.accelX));
 
-                // Integrate velocity and position
                 this.velX += this.accelX * ds;
                 this.velX = Math.max(-V_MAX, Math.min(V_MAX, this.velX));
 
@@ -139,17 +140,51 @@ export class Player {
             this.pos.x = Math.max(-7.0, Math.min(7.0, currentTileX * TILE_SIZE));
         }
 
-        // Visual ball roll and organic banking tilt
         this.sphereMesh.rotation.x -= fwdDist / this.radius;
         this.sphereMesh.rotation.z = -this.velX * 0.08 - this.accelX * 0.002;
 
-        // 7-Lane Collision Detection
+        // 7-Lane Collision Detection & Glass Slab Checking
         let onSolidGround = false;
         let primaryTileType = 0;
         let closestDistSq = Infinity;
         let touchedRow = -1;
         let touchedCol = -1;
 
+        // Check Glass Slabs (Depth 1 Rule & Fall Mechanics)
+        for (let slab of level.glassSlabs) {
+            const clampX = Math.max(slab.minX, Math.min(this.pos.x, slab.maxX));
+            const clampZ = Math.max(slab.minZ, Math.min(this.pos.z, slab.maxZ));
+            const dx = this.pos.x - clampX;
+            const dz = this.pos.z - clampZ;
+            const distSq = dx * dx + dz * dz;
+
+            if (distSq <= shadowRadius * shadowRadius) {
+                if (!slab.triggered) {
+                    slab.triggered = true;
+                    slab.entryZ = this.pos.z;
+                }
+
+                // If player travels more than 1 tile depth (2.0 units) into this slab, it drops
+                if (slab.entryZ !== null) {
+                    const depthTraveledOnSlab = Math.abs(this.pos.z - slab.entryZ);
+                    if (depthTraveledOnSlab > (TILE_SIZE + shadowRadius * 0.5)) {
+                        slab.isSolid = false;
+                    }
+                }
+
+                if (slab.isSolid) {
+                    onSolidGround = true;
+                    if (distSq < closestDistSq) {
+                        closestDistSq = distSq;
+                        primaryTileType = 4;
+                        touchedRow = slab.startRow;
+                        touchedCol = slab.startCol;
+                    }
+                }
+            }
+        }
+
+        // Check Regular Grid Tiles
         if (level.levelData && level.levelData.rows && level.levelData.rows.length > 0) {
             const rowsLen = level.levelData.rows.length;
             const rMin = Math.max(0, Math.floor((-this.pos.z - shadowRadius + TILE_HALF) / TILE_SIZE));
@@ -166,7 +201,7 @@ export class Player {
 
                 for (let c = cMin; c <= cMax; c++) {
                     const tileType = row.tiles[c];
-                    if (tileType === 0) continue; // Void tile
+                    if (tileType === 0 || tileType === 4) continue; // Glass handled above
 
                     const tileX = (c - 3) * TILE_SIZE;
                     const minX = tileX - TILE_HALF;
@@ -179,18 +214,7 @@ export class Player {
                     const distSq = dx * dx + dz * dz;
 
                     if (distSq <= shadowRadius * shadowRadius) {
-                        let tileIsSolid = true;
-                        if (tileType === 4) { // Glass tile
-                            const glassMesh = level.gridGroup.children.find(
-                                m => m.userData.row === r && m.userData.lane === c
-                            );
-                            if (glassMesh && glassMesh.position.y < -0.3) {
-                                tileIsSolid = false;
-                            }
-                        } else if (tileType === 7) { // Fade tile
-                            tileIsSolid = (level.fadeOpacity > 0.4);
-                        }
-
+                        let tileIsSolid = (tileType !== 7 || level.fadeOpacity > 0.4);
                         if (tileIsSolid) {
                             onSolidGround = true;
                             if (distSq < closestDistSq) {
@@ -214,8 +238,8 @@ export class Player {
         }
 
         const applyTileEffects = (type, r, c) => {
-            if (type === 2) this.jump(13.5);
-            else if (type === 3) this.jump(18.0);
+            if (type === 2) this.startPadJump(4.0, 3.2); // Exact 4-tile jump
+            else if (type === 3) this.startPadJump(8.0, 4.8); // Exact 8-tile jump
             else if (type === 5) {
                 this.speedSqS = Math.max(2, Math.min(40, this.speedSqS * 1.45));
                 this.sound.playSpeed();
@@ -228,41 +252,39 @@ export class Player {
                 const target = (row && row.tileTempo && row.tileTempo[c]) || level.levelData.baseTempo || 11;
                 this.applyTempoTile(target);
             }
-            else if (type === 4) {
-                const tm = level.gridGroup.children.find(m => m.userData.row === r && m.userData.lane === c);
-                if (tm) level.triggerGlass(tm, this.speedSqS);
-            }
         };
 
-        if (!this.isJumping) {
-            if (!onSolidGround) {
-                this.isFallingIntoVoid = true;
-                this.isGrounded = false;
-            }
-        }
+        // --- Exact Depth-Space Parabolic Jump Pad Trajectory ---
+        if (this.isPadJumping) {
+            const currentS = -this.pos.z / 2.0;
+            const progress = (currentS - this.padJumpStartS) / this.padJumpTargetDistance;
 
-        if (this.isFallingIntoVoid) {
+            if (progress >= 1.0) {
+                // Landed exactly on target depth
+                this.pos.y = this.radius;
+                this.isPadJumping = false;
+                this.velY = 0;
+
+                if (onSolidGround) {
+                    this.isGrounded = true;
+                    applyTileEffects(primaryTileType, touchedRow, touchedCol);
+                } else {
+                    this.isFallingIntoVoid = true;
+                }
+            } else {
+                // Parabolic trajectory: y(u) = radius + 4 * H * u * (1 - u)
+                const arcY = 4.0 * this.padJumpHeight * progress * (1.0 - progress);
+                this.pos.y = this.radius + Math.max(0, arcY);
+            }
+        } else if (this.isFallingIntoVoid) {
             this.isGrounded = false;
             this.velY -= 42.0 * delta;
             this.pos.y += this.velY * delta;
-        } else if (this.isJumping) {
-            const gravity = 34.0;
-            this.velY -= gravity * delta;
-            this.pos.y += this.velY * delta;
-
-            if (this.pos.y <= this.radius && this.velY <= 0) {
-                if (onSolidGround) {
-                    this.pos.y = this.radius;
-                    this.velY = 0;
-                    this.isGrounded = true;
-                    this.isJumping = false;
-                    applyTileEffects(primaryTileType, touchedRow, touchedCol);
-                } else {
-                    this.isJumping = false;
-                    this.isFallingIntoVoid = true;
-                }
-            }
+        } else if (!onSolidGround) {
+            this.isFallingIntoVoid = true;
+            this.isGrounded = false;
         } else {
+            // Rolling on solid ground
             this.pos.y = this.radius;
             this.velY = 0;
             this.isGrounded = true;
