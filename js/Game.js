@@ -13,6 +13,11 @@ export class Game {
         this.clock = new THREE.Clock();
         this.sound = new SoundEngine();
 
+        this.gemsCollected = 0;
+        this.crownsCollected = 0;
+        this.totalGems = 0;
+        this.totalCrowns = 0;
+
         this.initScene();
         this.initLevel();
         this.initPlayer();
@@ -20,11 +25,7 @@ export class Game {
         this.initControls();
         this.initUI();
 
-        this.gemsCollected = 0;
-        this.crownsCollected = 0;
-        this.totalGems = 10;
-        this.totalCrowns = 3;
-
+        this.countCollectibles();
         this.startLoop();
     }
     initScene() {
@@ -63,6 +64,7 @@ export class Game {
             this.levelData = normalizeLevelData(JSON.parse(JSON.stringify(PRESETS.preset_cloud)));
         }
         this.level.loadLevel(this.levelData);
+        this.countCollectibles();
     }
     initPlayer() {
         this.player = new Player(this.scene, this.sound);
@@ -158,6 +160,7 @@ export class Game {
             this.player.shadow.visible = true;
             document.getElementById('hud-top').style.display = 'flex';
             document.getElementById('mode-toggle-btn').innerText = "🛠️ Editor";
+            this.countCollectibles();
             this.restart();
         }
     }
@@ -169,10 +172,39 @@ export class Game {
             document.getElementById('theme-select').value = this.levelData.theme;
             this.editor.updateScrubber();
             this.editor.syncTopbarFields();
+            this.countCollectibles();
         }
+    }
+    countCollectibles() {
+        let gems = 0;
+        let crowns = 0;
+        if (this.levelData && Array.isArray(this.levelData.rows)) {
+            for (const row of this.levelData.rows) {
+                if (row && Array.isArray(row.obstacles)) {
+                    for (const obs of row.obstacles) {
+                        if (obs === 6) gems++;
+                        if (obs === 7) crowns++;
+                    }
+                }
+            }
+        }
+        this.totalGems = gems;
+        this.totalCrowns = crowns;
+        this.updateHUDStats();
+    }
+    getFarthestTileRow() {
+        if (!this.levelData || !this.levelData.rows || this.levelData.rows.length === 0) return 0;
+        for (let r = this.levelData.rows.length - 1; r >= 0; r--) {
+            const row = this.levelData.rows[r];
+            if (row && Array.isArray(row.tiles) && row.tiles.some(t => t > 0)) {
+                return r;
+            }
+        }
+        return Math.max(0, this.levelData.rows.length - 1);
     }
     startPlay(fromRow = 0) {
         this.setMode('play');
+        this.countCollectibles();
         this.player.reset(fromRow, this.levelData.baseTempo || 11);
         this.sound.startMusic();
     }
@@ -180,7 +212,7 @@ export class Game {
         document.getElementById('game-overlay').classList.remove('active');
         this.gemsCollected = 0;
         this.crownsCollected = 0;
-        this.updateHUDStats();
+        this.countCollectibles();
         this.player.reset(0, this.levelData.baseTempo || 11);
         this.level.rebuildMeshes();
         this.sound.startMusic();
@@ -205,9 +237,10 @@ export class Game {
         this.showEndModal();
     }
     showEndModal() {
-        const totalRows = this.levelData.rows.length;
-        const currentRow = Math.min(totalRows, Math.round(-this.player.pos.z / 2.0));
-        const pct = Math.min(100, Math.floor((currentRow / totalRows) * 100));
+        const farthestRow = this.getFarthestTileRow();
+        const currentRow = Math.max(0, -this.player.pos.z / 2.0);
+        const progressTarget = Math.max(1, farthestRow);
+        const pct = Math.min(100, Math.floor((currentRow / progressTarget) * 100));
 
         document.getElementById('overlay-gems').innerText = `${this.gemsCollected}/${this.totalGems}`;
         document.getElementById('overlay-crowns').innerText = `${this.crownsCollected}/${this.totalCrowns}`;
@@ -220,16 +253,18 @@ export class Game {
     }
     checkItemCollisions() {
         const pPos = this.player.pos;
-        // Add the radius offset to adjust obstacle collision bounds for the 1.3x bigger ball
         const rOffset = this.player.radius - 0.6; 
 
         for (let child of this.level.obstacleGroup.children) {
             if (child.userData && !child.userData.collected) {
-                const dist = child.position.distanceTo(pPos);
+                const dx = pPos.x - child.position.x;
+                const dz = pPos.z - child.position.z;
+                const dist2D = Math.sqrt(dx * dx + dz * dz);
                 const hitRadius = child.userData.hitRadius + rOffset;
 
                 if (child.userData.isItem) {
-                    if (dist < hitRadius) {
+                    const dist3D = child.position.distanceTo(pPos);
+                    if (dist3D < hitRadius) {
                         child.userData.collected = true;
                         child.visible = false;
                         if (child.userData.isCrown) {
@@ -241,10 +276,26 @@ export class Game {
                         }
                         this.updateHUDStats();
                     }
-                } else {
-                    if (dist < hitRadius && Math.abs(pPos.y - child.position.y) < child.userData.hitHeight) {
-                        this.player.crash("obstacle");
-                        return;
+                } else if (dist2D < hitRadius) {
+                    if (child.userData.isOverhead) {
+                        // Ceiling Wall: crashes if jumping up into it
+                        const playerTop = pPos.y + this.player.radius;
+                        if (playerTop >= child.userData.minY && pPos.y <= child.userData.maxY) {
+                            this.player.crash("obstacle");
+                            return;
+                        }
+                    } else if (child.userData.isWall) {
+                        // Giant Wall: completely blocks entire lane
+                        if (pPos.y <= child.userData.maxY && pPos.y >= child.userData.minY) {
+                            this.player.crash("obstacle");
+                            return;
+                        }
+                    } else {
+                        // Standard obstacles
+                        if (Math.abs(pPos.y - child.position.y) < child.userData.hitHeight) {
+                            this.player.crash("obstacle");
+                            return;
+                        }
                     }
                 }
             }
@@ -269,18 +320,21 @@ export class Game {
             this.camera.position.y = Math.max(4.5, this.player.pos.y + 8.0);
             this.camera.position.z = this.player.pos.z + 5.5;
             this.camera.lookAt(
-                this.player.pos.x * 0.5, // Look straight ahead from where the translated camera is
+                this.player.pos.x * 0.5,
                 Math.max(0, this.player.pos.y * 0.35),
                 this.player.pos.z - 2.5
             );
 
-            const totalRows = this.levelData.rows.length;
-            const currentRow = Math.min(totalRows, Math.max(0, -this.player.pos.z / 2.0));
-            const pct = Math.min(100, Math.floor((currentRow / (totalRows - 1)) * 100));
+            // Dynamic progress and completion based on farthest placed tile
+            const farthestRow = this.getFarthestTileRow();
+            const currentRow = Math.max(0, -this.player.pos.z / 2.0);
+            const progressTarget = Math.max(1, farthestRow);
+            const pct = Math.min(100, Math.floor((currentRow / progressTarget) * 100));
+
             document.getElementById('progress-fill').style.width = `${pct}%`;
             document.getElementById('progress-text').innerText = `${pct}%`;
 
-            if (currentRow >= totalRows - 1 && !this.player.isDead) {
+            if (currentRow >= farthestRow + 0.4 && !this.player.isDead) {
                 this.onLevelComplete();
             }
         } else {
