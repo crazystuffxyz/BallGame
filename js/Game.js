@@ -17,6 +17,7 @@ export class Game {
         this.crownsCollected = 0;
         this.totalGems = 0;
         this.totalCrowns = 0;
+        this.isLevelComplete = false;
 
         this.initScene();
         this.initLevel();
@@ -85,41 +86,43 @@ export class Game {
         });
         window.addEventListener('keyup', (e) => { window.keys[e.code] = false; });
 
-        const canvas = document.getElementById('game-canvas');
+        // --- Clean Unified Touch & Pointer Controller (Zero Mobile Jitter) ---
         let isDragging = false;
+        let activePointerId = null;
 
         const updateTargetX = (clientX) => {
-            // Absolute touch/mouse map tracking: Map exact screen width to 7-lane track width [-7.0, 7.0]
-            const normalizedX = clientX / window.innerWidth;
+            const width = window.innerWidth || 1;
+            const normalizedX = Math.max(0, Math.min(1, clientX / width));
             this.player.targetX = normalizedX * 14.0 - 7.0;
-            this.player.targetX = Math.max(-7.0, Math.min(7.0, this.player.targetX));
         };
 
-        const onDown = (clientX) => {
-            this.sound.init();
-            if (this.mode !== 'play') return;
+        const onPointerDown = (e) => {
+            if (this.mode !== 'play' || this.isLevelComplete) return;
+            if (e.target.closest('#editor-panel') || e.target.closest('#hud-top')) return;
+            
+            activePointerId = e.pointerId;
             isDragging = true;
-            updateTargetX(clientX);
+            this.sound.init();
+            updateTargetX(e.clientX);
         };
-        
-        const onMove = (clientX) => {
-            if (!isDragging || this.mode !== 'play') return;
-            updateTargetX(clientX);
+
+        const onPointerMove = (e) => {
+            if (!isDragging || this.mode !== 'play' || this.isLevelComplete) return;
+            if (activePointerId !== null && e.pointerId !== activePointerId) return;
+            updateTargetX(e.clientX);
         };
-        
-        const onUp = () => { isDragging = false; };
 
-        canvas.addEventListener('mousedown', (e) => onDown(e.clientX));
-        window.addEventListener('mousemove', (e) => onMove(e.clientX));
-        window.addEventListener('mouseup', onUp);
+        const onPointerUp = (e) => {
+            if (e.pointerId === activePointerId) {
+                isDragging = false;
+                activePointerId = null;
+            }
+        };
 
-        canvas.addEventListener('touchstart', (e) => {
-            if (e.touches.length > 0) onDown(e.touches[0].clientX);
-        }, { passive: true });
-        window.addEventListener('touchmove', (e) => {
-            if (e.touches.length > 0) onMove(e.touches[0].clientX);
-        }, { passive: true });
-        window.addEventListener('touchend', onUp);
+        window.addEventListener('pointerdown', onPointerDown, { passive: true });
+        window.addEventListener('pointermove', onPointerMove, { passive: true });
+        window.addEventListener('pointerup', onPointerUp, { passive: true });
+        window.addEventListener('pointercancel', onPointerUp, { passive: true });
 
         window.addEventListener('resize', () => {
             this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -149,6 +152,7 @@ export class Game {
         this.mode = mode;
         if (mode === 'editor') {
             this.sound.stopMusic();
+            this.isLevelComplete = false;
             this.player.mesh.visible = false;
             this.player.shadow.visible = false;
             if (this.level.editorGridGroup) this.level.editorGridGroup.visible = true;
@@ -206,12 +210,14 @@ export class Game {
     }
     startPlay(fromRow = 0) {
         this.setMode('play');
+        this.isLevelComplete = false;
         this.countCollectibles();
         this.player.reset(fromRow, this.levelData.baseTempo || 11);
         this.sound.startMusic();
     }
     restart() {
         document.getElementById('game-overlay').classList.remove('active');
+        this.isLevelComplete = false;
         this.gemsCollected = 0;
         this.crownsCollected = 0;
         this.countCollectibles();
@@ -220,8 +226,10 @@ export class Game {
         this.sound.startMusic();
     }
     onPlayerDeath(reason) {
+        if (this.isLevelComplete) return; // Prevent void fall triggering when already finished
         this.sound.stopMusic();
         setTimeout(() => {
+            if (this.isLevelComplete) return;
             const overlay = document.getElementById('game-overlay');
             const title = document.getElementById('overlay-title');
             title.className = "modal-title fail";
@@ -230,8 +238,16 @@ export class Game {
         }, 600);
     }
     onLevelComplete() {
+        if (this.isLevelComplete) return;
+        this.isLevelComplete = true; // Lock completion so it fires only once
+
         this.sound.stopMusic();
         this.sound.playCrown();
+
+        // Ball disappears on victory
+        this.player.mesh.visible = false;
+        this.player.shadow.visible = false;
+
         const overlay = document.getElementById('game-overlay');
         const title = document.getElementById('overlay-title');
         title.className = "modal-title win";
@@ -242,7 +258,7 @@ export class Game {
         const farthestRow = this.getFarthestTileRow();
         const currentRow = Math.max(0, -this.player.pos.z / 2.0);
         const progressTarget = Math.max(1, farthestRow);
-        const pct = Math.min(100, Math.floor((currentRow / progressTarget) * 100));
+        const pct = this.isLevelComplete ? 100 : Math.min(100, Math.floor((currentRow / progressTarget) * 100));
 
         document.getElementById('overlay-gems').innerText = `${this.gemsCollected}/${this.totalGems}`;
         document.getElementById('overlay-crowns').innerText = `${this.crownsCollected}/${this.totalCrowns}`;
@@ -254,6 +270,7 @@ export class Game {
         document.getElementById('crown-count').innerText = `${this.crownsCollected}/${this.totalCrowns}`;
     }
     checkItemCollisions() {
+        if (this.isLevelComplete) return;
         const pPos = this.player.pos;
         const rOffset = this.player.radius - 0.6; 
 
@@ -280,20 +297,17 @@ export class Game {
                     }
                 } else if (dist2D < hitRadius) {
                     if (child.userData.isOverhead) {
-                        // Ceiling Wall: crashes if jumping up into it
                         const playerTop = pPos.y + this.player.radius;
                         if (playerTop >= child.userData.minY && pPos.y <= child.userData.maxY) {
                             this.player.crash("obstacle");
                             return;
                         }
                     } else if (child.userData.isWall) {
-                        // Giant Wall: completely blocks entire lane
                         if (pPos.y <= child.userData.maxY && pPos.y >= child.userData.minY) {
                             this.player.crash("obstacle");
                             return;
                         }
                     } else {
-                        // Standard obstacles
                         if (Math.abs(pPos.y - child.position.y) < child.userData.hitHeight) {
                             this.player.crash("obstacle");
                             return;
@@ -307,6 +321,11 @@ export class Game {
         const delta = Math.min(0.05, this.clock.getDelta());
 
         if (this.mode === 'play') {
+            if (this.isLevelComplete) {
+                this.level.update(delta, this.player.pos.z);
+                return;
+            }
+
             if (window.keys) {
                 if (window.keys['ArrowLeft'] || window.keys['KeyA']) this.player.targetX -= 14.0 * delta;
                 if (window.keys['ArrowRight'] || window.keys['KeyD']) this.player.targetX += 14.0 * delta;
@@ -317,7 +336,7 @@ export class Game {
             this.level.update(delta, this.player.pos.z);
             this.checkItemCollisions();
 
-            // Camera TRANSLATES with the ball perfectly but only 50% (half tracking)
+            // Camera half-tracks lateral translation
             this.camera.position.x = this.player.pos.x * 0.5;
             this.camera.position.y = Math.max(4.5, this.player.pos.y + 8.0);
             this.camera.position.z = this.player.pos.z + 5.5;
@@ -327,7 +346,7 @@ export class Game {
                 this.player.pos.z - 2.5
             );
 
-            // Dynamic progress and completion based on farthest placed tile
+            // Progress & Finish line check
             const farthestRow = this.getFarthestTileRow();
             const currentRow = Math.max(0, -this.player.pos.z / 2.0);
             const progressTarget = Math.max(1, farthestRow);
@@ -336,7 +355,7 @@ export class Game {
             document.getElementById('progress-fill').style.width = `${pct}%`;
             document.getElementById('progress-text').innerText = `${pct}%`;
 
-            if (currentRow >= farthestRow + 0.4 && !this.player.isDead) {
+            if (currentRow >= farthestRow + 0.3 && !this.player.isDead && !this.isLevelComplete) {
                 this.onLevelComplete();
             }
         } else {
