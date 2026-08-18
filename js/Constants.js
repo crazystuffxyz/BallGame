@@ -58,31 +58,81 @@ export function tempoDirection(value, prevValue) {
 
 export function normalizeLevelData(data) {
     if (!data || typeof data !== 'object') {
-        return { theme: 'sky', baseTempo: 11, rows: [] };
-    }
-    if (typeof data.baseTempo !== 'number' || isNaN(data.baseTempo)) {
-        data.baseTempo = (typeof data.speed === 'number' && !isNaN(data.speed))
-            ? Math.round(data.speed * 11 * 10) / 10
-            : 11;
-    }
-    data.baseTempo = Math.max(2, Math.min(40, data.baseTempo));
-    if (!Array.isArray(data.rows)) data.rows = [];
-
-    // Convert 5-element format to 7-element format if legacy data is loaded
-    for (const row of data.rows) {
-        if (!row || typeof row !== 'object') continue;
-        const pad7 = (arr) => {
-            if (!Array.isArray(arr)) return [0, 0, 0, 0, 0, 0, 0];
-            if (arr.length === 5) return [0, arr[0], arr[1], arr[2], arr[3], arr[4], 0];
-            while (arr.length < 7) arr.push(0);
-            return arr.slice(0, 7);
+        return {
+            name: 'Untitled Level',
+            theme: 'sky',
+            baseTempo: 11,
+            rows: []
         };
-        row.tiles = pad7(row.tiles);
-        row.obstacles = pad7(row.obstacles);
-        row.tileTempo = pad7(row.tileTempo);
     }
-    if (!data.theme) data.theme = 'sky';
-    return data;
+
+    const normalized = {
+        ...data,
+        name: typeof data.name === 'string'
+            ? data.name
+            : 'Untitled Level',
+        theme: THEMES[data.theme]
+            ? data.theme
+            : 'sky',
+        baseTempo: 11,
+        rows: Array.isArray(data.rows)
+            ? data.rows
+            : []
+    };
+
+    if (
+        typeof data.baseTempo === 'number' &&
+        Number.isFinite(data.baseTempo)
+    ) {
+        normalized.baseTempo = data.baseTempo;
+    } else if (
+        typeof data.speed === 'number' &&
+        Number.isFinite(data.speed)
+    ) {
+        normalized.baseTempo =
+            Math.round(data.speed * 11 * 10) / 10;
+    }
+
+    normalized.baseTempo = Math.max(
+        2,
+        Math.min(40, normalized.baseTempo)
+    );
+
+    const normalizeArray = (arr) => {
+        if (!Array.isArray(arr)) {
+            return [0, 0, 0, 0, 0, 0, 0];
+        }
+
+        // Convert legacy five-lane data to seven lanes.
+        if (arr.length === 5) {
+            return [
+                0,
+                Number(arr[0]) || 0,
+                Number(arr[1]) || 0,
+                Number(arr[2]) || 0,
+                Number(arr[3]) || 0,
+                Number(arr[4]) || 0,
+                0
+            ];
+        }
+
+        return Array.from({ length: 7 }, (_, i) => {
+            return Number(arr[i]) || 0;
+        });
+    };
+
+    normalized.rows = normalized.rows.map(row => {
+        row = row && typeof row === 'object' ? row : {};
+
+        return {
+            ...row,
+            tiles: normalizeArray(row.tiles),
+            obstacles: normalizeArray(row.obstacles),
+            tileTempo: normalizeArray(row.tileTempo)
+        };
+    });
+
+    return normalized;
 }
 
 export function generatePresetTrack(type) {
