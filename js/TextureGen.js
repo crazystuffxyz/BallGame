@@ -1,3 +1,4 @@
+// js/TextureGen.js
 import * as THREE from 'three';
 
 export const TextureGen = {
