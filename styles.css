@@ -132,7 +132,7 @@ body {
     text-shadow: 0 2px 4px rgba(0,0,0,0.8);
 }
 
-/* --- Strictly Controlled Overlay Modals --- */
+/* --- Modals --- */
 #game-overlay, #json-modal {
     display: none !important;
     position: absolute;
@@ -177,7 +177,7 @@ body {
     justify-content: center;
 }
 
-/* --- Level Editor Full UI --- */
+/* --- Level Editor UI --- */
 #editor-panel {
     position: absolute;
     inset: 0;
@@ -218,8 +218,15 @@ body {
     pointer-events: auto !important;
     cursor: pointer;
 }
+.color-picker-input {
+    width: 32px;
+    height: 28px;
+    padding: 1px 2px;
+    background: transparent;
+    cursor: pointer;
+}
 
-/* --- Draggable Floating Palette --- */
+/* --- Draggable Palette --- */
 #editor-palette {
     position: absolute;
     top: 65px;
@@ -328,7 +335,7 @@ body {
 }
 .tool-btn .icon { font-size: 16px; }
 
-/* --- Bottom Row Navigation Scrubber --- */
+/* --- Scrubber & Bottom Controls --- */
 #editor-bottombar {
     background: var(--bg-dark);
     border-top: 2px solid var(--primary);
@@ -404,13 +411,10 @@ body {
     outline: none;
 }
 
-/* =======================================================
-   MOBILE & RESPONSIVE STYLES
-   ======================================================= */
+/* --- Mobile Styles --- */
 @media (max-width: 768px) {
     .hide-mobile { display: none !important; }
 
-    /* HUD adjustments */
     #hud-top {
         flex-wrap: wrap;
         padding: 10px;
@@ -421,7 +425,6 @@ body {
     .hud-btn { padding: 8px; font-size: 12px; flex-grow: 1; justify-content: center; }
     #progress-container { width: 100px; }
 
-    /* Editor adjustments */
     #editor-topbar {
         padding: 6px 10px;
         gap: 6px;
