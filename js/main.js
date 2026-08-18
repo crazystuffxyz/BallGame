@@ -1,3 +1,4 @@
+// js/main.js
 import { Game } from './Game.js';
 
 // --- Style adjustments applied dynamically based on screen width ---
