@@ -12,7 +12,6 @@ export class EditorController {
         this.selectedTempoValue = 15;
         this.currentRow = 0;
         this.isPainting = false;
-        this.isHoveringUI = false;
         this.lastPaintedKey = null;
 
         this.interactionMode = 'paint';
@@ -33,6 +32,7 @@ export class EditorController {
         this.initEvents();
         this.syncTopbarFields();
     }
+
     createHoverIndicator() {
         const geo = new THREE.BoxGeometry(2.0, 0.45, 2.0);
         const mat = new THREE.MeshBasicMaterial({
@@ -43,6 +43,12 @@ export class EditorController {
         mesh.visible = false;
         return mesh;
     }
+
+    isEventOnUI(e) {
+        if (!e.target) return false;
+        return !!e.target.closest('#editor-topbar, #editor-palette, #editor-bottombar, #hud-top, #game-overlay, #json-modal');
+    }
+
     initDraggablePalette() {
         const palette = document.getElementById('editor-palette');
         const header = document.getElementById('palette-header');
@@ -83,6 +89,7 @@ export class EditorController {
             minBtn.innerText = body.classList.contains('collapsed') ? '□' : '_';
         };
     }
+
     initUI() {
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.onclick = (e) => {
@@ -117,7 +124,6 @@ export class EditorController {
         document.getElementById('step-next-1').onclick = (e) => { e.stopPropagation(); this.scrollToRow(this.currentRow + 1); };
         document.getElementById('step-next-10').onclick = (e) => { e.stopPropagation(); this.scrollToRow(this.currentRow + 10); };
 
-        // Play always starts from beginning (Row 0)
         const playFromStart = () => this.game.startPlay(0);
         document.getElementById('ed-play-btn').onclick = playFromStart;
         document.getElementById('ed-play-start-btn').onclick = playFromStart;
@@ -165,20 +171,8 @@ export class EditorController {
                 modeToggleBtn.className = 'hud-btn';
             }
         };
-
-        const uiEls = [
-            document.getElementById('editor-topbar'),
-            document.getElementById('editor-palette'),
-            document.getElementById('editor-bottombar')
-        ];
-        uiEls.forEach(el => {
-            el.addEventListener('pointerenter', () => { this.isHoveringUI = true; this.hoverIndicator.visible = false; });
-            el.addEventListener('pointerleave', () => { this.isHoveringUI = false; });
-            el.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
-            el.addEventListener('mousedown', (e) => { e.stopPropagation(); });
-            el.addEventListener('touchstart', (e) => { e.stopPropagation(); }, {passive: false});
-        });
     }
+
     initEvents() {
         const canvas = document.getElementById('game-canvas');
 
@@ -189,7 +183,7 @@ export class EditorController {
         };
 
         canvas.addEventListener('pointerdown', (e) => {
-            if (!this.active || this.isHoveringUI) return;
+            if (!this.active || this.isEventOnUI(e)) return;
 
             if (e.button === 2 || e.button === 1 || this.interactionMode === 'pan') {
                 this.isPanningTrack = true;
@@ -200,7 +194,6 @@ export class EditorController {
 
             if (e.button === 0 && this.interactionMode === 'paint') {
                 this.isPainting = true;
-                // Update raycast hover immediately so we never stamp the previous cell
                 updatePointerCoords(e.clientX, e.clientY);
                 this.lastPaintedKey = `${this.hoverRow},${this.hoverLane}`;
                 this.paintAtHover(false);
@@ -217,7 +210,7 @@ export class EditorController {
                 return;
             }
 
-            if (this.isHoveringUI) {
+            if (this.isEventOnUI(e)) {
                 this.hoverIndicator.visible = false;
                 return;
             }
@@ -238,10 +231,11 @@ export class EditorController {
             this.isPanningTrack = false;
             this.lastPaintedKey = null;
         });
+
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
         window.addEventListener('wheel', (e) => {
-            if (!this.active || this.isHoveringUI) return;
+            if (!this.active || this.isEventOnUI(e)) return;
             e.preventDefault();
             const delta = Math.sign(e.deltaY) * (e.shiftKey ? 5 : 1);
             this.scrollToRow(this.currentRow + delta);
@@ -261,6 +255,7 @@ export class EditorController {
             }
         });
     }
+
     toggle(active) {
         this.active = active;
         this.hoverIndicator.visible = active;
@@ -272,38 +267,27 @@ export class EditorController {
             this.syncTopbarFields();
         }
     }
+
     scrollToRow(r) {
         const rows = this.game.levelData?.rows || [];
         const maxRow = Math.max(0, rows.length - 1);
 
-        this.currentRow = Math.max(
-            0,
-            Math.min(maxRow, Number(r) || 0)
-        );
+        this.currentRow = Math.max(0, Math.min(maxRow, Number(r) || 0));
 
         const slider = document.getElementById('row-slider');
         const display = document.getElementById('row-display');
 
-        if (slider) {
-            slider.value = String(this.currentRow);
-        }
-
-        if (display) {
-            display.innerText = `Row: ${this.currentRow}/${maxRow}`;
-        }
+        if (slider) slider.value = String(this.currentRow);
+        if (display) display.innerText = `Row: ${this.currentRow}/${maxRow}`;
 
         this.updateTempoPreview();
 
         const z = -this.currentRow * 2.0;
-
         this.game.camera.position.set(0, 8.0, z + 5.5);
         this.game.camera.lookAt(0, 0, z - 2.5);
     }
+
     updateHover() {
-        if (this.isHoveringUI) {
-            this.hoverIndicator.visible = false;
-            return;
-        }
         this.raycaster.setFromCamera(this.mouse, this.game.camera);
         const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
         const target = new THREE.Vector3();
@@ -326,6 +310,7 @@ export class EditorController {
         this.hoverLane = null;
         this.hoverRow = null;
     }
+
     paintAtHover(isErase = false) {
         if (this.hoverLane === null || this.hoverRow === null) return;
         const row = this.game.levelData.rows[this.hoverRow];
@@ -363,6 +348,7 @@ export class EditorController {
         this.game.level.rebuildMeshes();
         this.game.countCollectibles();
     }
+
     deleteAtHover() {
         if (this.hoverLane === null || this.hoverRow === null) return;
         const row = this.game.levelData.rows[this.hoverRow];
@@ -376,6 +362,7 @@ export class EditorController {
         this.game.countCollectibles();
         this.updateTempoPreview();
     }
+
     updateTempoPreview() {
         const input = document.getElementById('tempo-value-input');
         const icon = document.getElementById('tempo-preview-icon');
@@ -405,6 +392,7 @@ export class EditorController {
             text.textContent = `Same tempo: ${val.toFixed(1)} sq/s`;
         }
     }
+
     fillCurrentRow() {
         const row = this.game.levelData.rows[this.currentRow];
         if (row) {
@@ -413,6 +401,7 @@ export class EditorController {
             this.game.level.rebuildMeshes();
         }
     }
+
     clearCurrentRow() {
         const row = this.game.levelData.rows[this.currentRow];
         if (row) {
@@ -423,6 +412,7 @@ export class EditorController {
             this.game.countCollectibles();
         }
     }
+
     duplicateRowAhead() {
         const cur = this.game.levelData.rows[this.currentRow];
         const nextRow = this.currentRow + 1;
@@ -433,6 +423,7 @@ export class EditorController {
             this.scrollToRow(nextRow);
         }
     }
+
     add10Rows() {
         for (let i = 0; i < 10; i++) {
             this.game.levelData.rows.push({ tiles: [1, 1, 1, 1, 1, 1, 1], obstacles: [0, 0, 0, 0, 0, 0, 0], tileTempo: [0, 0, 0, 0, 0, 0, 0] });
@@ -440,6 +431,7 @@ export class EditorController {
         this.updateScrubber();
         this.game.level.rebuildMeshes();
     }
+
     clearAll() {
         if (confirm("Clear all tiles and obstacles in this level?")) {
             for (let r of this.game.levelData.rows) {
@@ -451,17 +443,14 @@ export class EditorController {
             this.game.countCollectibles();
         }
     }
+
     updateScrubber() {
         const rows = this.game.levelData?.rows || [];
         const maxRow = Math.max(0, rows.length - 1);
 
-        this.currentRow = Math.max(
-            0,
-            Math.min(this.currentRow, maxRow)
-        );
+        this.currentRow = Math.max(0, Math.min(this.currentRow, maxRow));
 
         const slider = document.getElementById('row-slider');
-
         if (slider) {
             slider.min = '0';
             slider.max = String(maxRow);
@@ -469,11 +458,11 @@ export class EditorController {
         }
 
         const display = document.getElementById('row-display');
-
         if (display) {
             display.innerText = `Row: ${this.currentRow}/${maxRow}`;
         }
     }
+
     syncTopbarFields() {
         const baseTempoInput = document.getElementById('base-tempo-input');
         if (baseTempoInput && this.game.levelData) {
@@ -481,10 +470,12 @@ export class EditorController {
         }
         this.updateTempoPreview();
     }
+
     save() {
         Storage.save(this.game.levelData);
         alert("Level saved successfully to browser storage!");
     }
+
     openJsonModal() {
         const modal = document.getElementById('json-modal');
         const textarea = document.getElementById('json-textarea');
@@ -500,12 +491,12 @@ export class EditorController {
                     document.execCommand('copy');
                     textarea.setSelectionRange(0, 0);
                 }
-
                 alert('JSON copied to clipboard!');
             } catch (error) {
                 alert('Unable to copy automatically. Please copy the text manually.');
             }
         };
+
         document.getElementById('json-load-btn').onclick = () => {
             try {
                 const parsed = JSON.parse(textarea.value);
@@ -521,6 +512,7 @@ export class EditorController {
                 }
             } catch(e) { alert("Invalid JSON format!"); }
         };
+
         document.getElementById('json-close-btn').onclick = () => {
             modal.classList.remove('active');
         };
