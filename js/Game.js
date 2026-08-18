@@ -321,51 +321,170 @@ export class Game {
         document.getElementById('crown-count').innerText = `${this.crownsCollected}/${this.totalCrowns}`;
     }
 
+    // Exact 3D Distance Functions
+    sqDistPointAABB(px, py, pz, minX, maxX, minY, maxY, minZ, maxZ) {
+        let sqDist = 0;
+        if (px < minX) sqDist += (minX - px) * (minX - px);
+        else if (px > maxX) sqDist += (px - maxX) * (px - maxX);
+        if (py < minY) sqDist += (minY - py) * (minY - py);
+        else if (py > maxY) sqDist += (py - maxY) * (py - maxY);
+        if (pz < minZ) sqDist += (minZ - pz) * (minZ - pz);
+        else if (pz > maxZ) sqDist += (pz - maxZ) * (pz - maxZ);
+        return sqDist;
+    }
+
+    sqDistPointCylinder(px, py, pz, cx, cz, minY, maxY, radius) {
+        const dx = px - cx;
+        const dz = pz - cz;
+        const dHorizontal = Math.sqrt(dx * dx + dz * dz);
+        const dRadial = Math.max(0, dHorizontal - radius);
+        let dY = 0;
+        if (py < minY) dY = minY - py;
+        else if (py > maxY) dY = py - maxY;
+        return dRadial * dRadial + dY * dY;
+    }
+
+    sqDistPointPyramid(px, py, pz, cx, baseY, cz, halfBase, height) {
+        const lx = Math.abs(px - cx);
+        const lz = Math.abs(pz - cz);
+        const ly = py - baseY;
+
+        if (ly < 0) {
+            const dX = Math.max(0, lx - halfBase);
+            const dZ = Math.max(0, lz - halfBase);
+            return dX * dX + dZ * dZ + ly * ly;
+        }
+        if (ly > height) {
+            const dY = ly - height;
+            return lx * lx + lz * lz + dY * dY;
+        }
+
+        const crossW = halfBase * (1.0 - ly / height);
+        const dX = Math.max(0, lx - crossW);
+        const dZ = Math.max(0, lz - crossW);
+        return dX * dX + dZ * dZ;
+    }
+
     checkItemCollisions() {
-        if (this.isLevelComplete) return;
-        const pPos = this.player.pos;
-        const hazardRadius = this.player.hazardRadius;
+        if (this.isLevelComplete || this.player.isDead) return;
+        const P = this.player.pos;
+        const R = this.player.hazardRadius;
+        const Rsq = R * R;
 
         for (let child of this.level.obstacleGroup.children) {
-            if (child.userData && !child.userData.collected) {
-                const dx = pPos.x - child.position.x;
-                const dz = pPos.z - child.position.z;
-                const dist2D = Math.sqrt(dx * dx + dz * dz);
-                const hitRadius = child.userData.hitRadius + (hazardRadius - 0.78);
+            if (!child.userData || child.userData.collected) continue;
+            const u = child.userData;
+            const ox = child.position.x;
+            const oz = child.position.z;
 
-                if (child.userData.isItem) {
-                    const dist3D = child.position.distanceTo(pPos);
-                    if (dist3D < hitRadius) {
-                        child.userData.collected = true;
-                        child.visible = false;
-                        if (child.userData.isCrown) {
-                            this.crownsCollected++;
-                            this.sound.playCrown();
-                        } else {
-                            this.gemsCollected++;
-                            this.sound.playGem();
-                        }
-                        this.updateHUDStats();
-                    }
-                } else if (dist2D < hitRadius) {
-                    if (child.userData.isOverhead) {
-                        const playerTop = pPos.y + this.player.radius;
-                        if (playerTop >= child.userData.minY && pPos.y <= child.userData.maxY) {
-                            this.player.crash("obstacle");
-                            return;
-                        }
-                    } else if (child.userData.isWall) {
-                        if (pPos.y <= child.userData.maxY && pPos.y >= child.userData.minY) {
-                            this.player.crash("obstacle");
-                            return;
-                        }
+            // 1. Items: Diamond (6) & Crown (7)
+            if (u.isItem) {
+                const dist3D = child.position.distanceTo(P);
+                if (dist3D < (u.hitRadius + R)) {
+                    u.collected = true;
+                    child.visible = false;
+                    if (u.isCrown) {
+                        this.crownsCollected++;
+                        this.sound.playCrown();
                     } else {
-                        if (Math.abs(pPos.y - child.position.y) < child.userData.hitHeight) {
-                            this.player.crash("obstacle");
-                            return;
-                        }
+                        this.gemsCollected++;
+                        this.sound.playGem();
+                    }
+                    this.updateHUDStats();
+                }
+                continue;
+            }
+
+            // 2. Pyramid (2): Exact 3D Sloped Pyramid Test
+            if (u.isPyramid) {
+                const sqDist = this.sqDistPointPyramid(P.x, P.y, P.z, ox, 0, oz, u.halfBase, u.height);
+                if (sqDist <= Rsq) {
+                    this.player.crash("obstacle");
+                    return;
+                }
+                continue;
+            }
+
+            // 3. Tree (1): Cylinder Trunk + Cone Foliage
+            if (u.isTree) {
+                const trunkSq = this.sqDistPointCylinder(P.x, P.y, P.z, ox, oz, 0, 0.8, 0.3);
+                if (trunkSq <= Rsq) {
+                    this.player.crash("obstacle");
+                    return;
+                }
+                const foliageSq = this.sqDistPointPyramid(P.x, P.y, P.z, ox, 0.6, oz, 0.9, 1.6);
+                if (foliageSq <= Rsq) {
+                    this.player.crash("obstacle");
+                    return;
+                }
+                continue;
+            }
+
+            // 4. Laser Gate (3): Left & Right Posts + Beam Capsule
+            if (u.isLaser) {
+                const poleLSq = this.sqDistPointCylinder(P.x, P.y, P.z, ox - 0.9, oz, 0, 2.5, 0.1);
+                const poleRSq = this.sqDistPointCylinder(P.x, P.y, P.z, ox + 0.9, oz, 0, 2.5, 0.1);
+                if (poleLSq <= Rsq || poleRSq <= Rsq) {
+                    this.player.crash("obstacle");
+                    return;
+                }
+                // Beam cylinder along X between -0.9 and +0.9 at Y = 1.2
+                const clampBeamX = Math.max(ox - 0.9, Math.min(P.x, ox + 0.9));
+                const bDx = P.x - clampBeamX;
+                const bDy = P.y - 1.2;
+                const bDz = P.z - oz;
+                const beamDistSq = bDx * bDx + bDy * bDy + bDz * bDz;
+                if (beamDistSq <= (R + 0.08) * (R + 0.08)) {
+                    this.player.crash("obstacle");
+                    return;
+                }
+                continue;
+            }
+
+            // 5. Hammer (4): Rotating head & stem
+            if (u.isHammer) {
+                const hdx = P.x - ox;
+                const hdz = P.z - oz;
+                const hDist2D = Math.sqrt(hdx * hdx + hdz * hdz);
+                if (hDist2D <= R + 0.8 && P.y >= 0 && P.y <= 3.2) {
+                    this.player.crash("obstacle");
+                    return;
+                }
+                continue;
+            }
+
+            // 6. Box Obstacles (Wall, Ceiling Wall, Drop Block)
+            if (u.isBox) {
+                const sqDist = this.sqDistPointAABB(
+                    P.x, P.y, P.z,
+                    ox - u.halfX, ox + u.halfX,
+                    u.minY, u.maxY,
+                    oz - u.halfZ, oz + u.halfZ
+                );
+                if (sqDist <= Rsq) {
+                    this.player.crash("obstacle");
+                    return;
+                }
+                continue;
+            }
+
+            // 7. Pop-up Brick (10): 1x1x1 Cube at dynamic Y
+            if (u.isBrick && u.brickData) {
+                const bY = u.brickData.currentY;
+                // Only collides if partially or fully above ground
+                if (bY > -0.45) {
+                    const sqDist = this.sqDistPointAABB(
+                        P.x, P.y, P.z,
+                        ox - 0.5, ox + 0.5,
+                        bY - 0.5, bY + 0.5,
+                        oz - 0.5, oz + 0.5
+                    );
+                    if (sqDist <= Rsq) {
+                        this.player.crash("obstacle");
+                        return;
                     }
                 }
+                continue;
             }
         }
     }
