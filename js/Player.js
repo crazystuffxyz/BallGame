@@ -4,7 +4,12 @@ export class Player {
     constructor(scene, sound) {
         this.scene = scene;
         this.sound = sound;
-        this.radius = 0.78; // 1.3x ball size
+        
+        // Base Dimensions & Two Distinct Hitboxes
+        this.radius = 0.78; 
+        this.hazardRadius = this.radius * 1.1;               // 1.1x larger for obstacle damage (0.858)
+        this.groundRadius = this.hazardRadius * 0.75;        // 0.75x of hazard hitbox for tiles & diagonals (0.6435)
+
         this.pos = new THREE.Vector3(0, this.radius, 0);
         this.velY = 0;
         this.isGrounded = true;
@@ -13,7 +18,7 @@ export class Player {
         this.isDead = false;
         this.speedSqS = 11;
 
-        // Smooth, Weighty Kinematics in Depth Space
+        // Smooth Depth-Space Kinematics with Lower Jerk Cap
         this.targetX = 0;
         this.velX = 0;   // width/depth
         this.accelX = 0; // width/depth^2
@@ -51,7 +56,8 @@ export class Player {
         return group;
     }
     createShadow() {
-        const geo = new THREE.CircleGeometry(this.radius * 0.45, 24);
+        // Shadow visual matches the 0.75x ground & diagonal hitbox
+        const geo = new THREE.CircleGeometry(this.groundRadius, 24);
         geo.rotateX(-Math.PI / 2);
         const mat = new THREE.MeshBasicMaterial({
             color: 0x000000,
@@ -96,7 +102,7 @@ export class Player {
 
         const TILE_SIZE = 2.0;
         const TILE_HALF = 1.0;
-        const shadowRadius = this.radius * 0.45;
+        const groundRadius = this.groundRadius; // 0.75x hitbox for diagonals and tiles
 
         // Forward motion along depth
         const fwdDist = this.speedSqS * TILE_SIZE * delta;
@@ -105,12 +111,12 @@ export class Player {
         // Total depth in tile units traversed this frame
         const deltaS = this.speedSqS * delta;
 
-        // --- Smooth, Weighty Kinematic S-Curve Controller ---
-        // Bounded acceleration and jerk prevent violent jumps or teleporting on mobile
-        const V_MAX = 4.5;    // Max speed (width/depth)
-        const A_MAX = 18.0;   // Controlled max acceleration (width/depth^2)
-        const J_MAX = 150.0;  // Smooth max jerk (width/depth^3)
-        const TAU_A = A_MAX / J_MAX; // 0.12 depth units time constant
+        // --- Low-Jerk Smooth Kinematic Controller ---
+        // Significantly reduced jerk (J_MAX = 45) removes all twitching on small 1-3 block movements
+        const V_MAX = 4.5;    // Max lateral speed (width/depth)
+        const A_MAX = 14.0;   // Balanced max acceleration (width/depth^2)
+        const J_MAX = 45.0;   // Lower jerk cap for smooth micro-adjustments (width/depth^3)
+        const TAU_A = A_MAX / J_MAX; // 0.31 depth units time constant
 
         if (deltaS > 0.000001) {
             const maxSubStep = 0.005;
@@ -156,6 +162,7 @@ export class Player {
         let closestDistSq = Infinity;
         let touchedRow = -1;
         let touchedCol = -1;
+        let jumpPadCandidate = null;
 
         // Glass Slabs: 1-Depth Safe Rule
         for (let slab of level.glassSlabs) {
@@ -165,7 +172,7 @@ export class Player {
             const dz = this.pos.z - clampZ;
             const distSq = dx * dx + dz * dz;
 
-            if (distSq <= shadowRadius * shadowRadius) {
+            if (distSq <= groundRadius * groundRadius) {
                 if (!slab.triggered) {
                     slab.triggered = true;
                     slab.entryZ = this.pos.z;
@@ -173,7 +180,7 @@ export class Player {
 
                 if (slab.entryZ !== null) {
                     const depthTraveledOnSlab = Math.abs(this.pos.z - slab.entryZ);
-                    if (depthTraveledOnSlab > (TILE_SIZE + shadowRadius * 0.5)) {
+                    if (depthTraveledOnSlab > (TILE_SIZE + groundRadius * 0.5)) {
                         slab.isSolid = false;
                     }
                 }
@@ -193,10 +200,10 @@ export class Player {
         // Regular Grid Tiles
         if (level.levelData && level.levelData.rows && level.levelData.rows.length > 0) {
             const rowsLen = level.levelData.rows.length;
-            const rMin = Math.max(0, Math.floor((-this.pos.z - shadowRadius + TILE_HALF) / TILE_SIZE));
-            const rMax = Math.min(rowsLen - 1, Math.floor((-this.pos.z + shadowRadius + TILE_HALF) / TILE_SIZE));
-            const cMin = Math.max(0, Math.floor((this.pos.x - shadowRadius + 7.0) / TILE_SIZE));
-            const cMax = Math.min(6, Math.floor((this.pos.x + shadowRadius + 7.0) / TILE_SIZE));
+            const rMin = Math.max(0, Math.floor((-this.pos.z - groundRadius + TILE_HALF) / TILE_SIZE));
+            const rMax = Math.min(rowsLen - 1, Math.floor((-this.pos.z + groundRadius + TILE_HALF) / TILE_SIZE));
+            const cMin = Math.max(0, Math.floor((this.pos.x - groundRadius + 7.0) / TILE_SIZE));
+            const cMax = Math.min(6, Math.floor((this.pos.x + groundRadius + 7.0) / TILE_SIZE));
 
             for (let r = rMin; r <= rMax; r++) {
                 const row = level.levelData.rows[r];
@@ -219,10 +226,16 @@ export class Player {
                     const dz = this.pos.z - clampZ;
                     const distSq = dx * dx + dz * dz;
 
-                    if (distSq <= shadowRadius * shadowRadius) {
+                    if (distSq <= groundRadius * groundRadius) {
                         let tileIsSolid = (tileType !== 7 || level.fadeOpacity > 0.4);
                         if (tileIsSolid) {
                             onSolidGround = true;
+
+                            // ALWAYS prioritize Jump Pad (2) and Big Jump (3) so they never get swallowed
+                            if (tileType === 2 || tileType === 3) {
+                                jumpPadCandidate = { type: tileType, row: r, col: c };
+                            }
+
                             if (distSq < closestDistSq) {
                                 closestDistSq = distSq;
                                 primaryTileType = tileType;
@@ -241,6 +254,13 @@ export class Player {
                     onSolidGround = true;
                 }
             }
+        }
+
+        // Guaranteed Jump Pad Trigger Priority
+        if (jumpPadCandidate) {
+            primaryTileType = jumpPadCandidate.type;
+            touchedRow = jumpPadCandidate.row;
+            touchedCol = jumpPadCandidate.col;
         }
 
         const applyTileEffects = (type, r, c) => {
@@ -275,7 +295,10 @@ export class Player {
                 const rowData = level.levelData.rows[landRow];
                 const landType = (rowData && rowData.tiles) ? rowData.tiles[landCol] : 0;
 
-                if (landType > 0) {
+                if (landType === 2 || landType === 3) {
+                    this.isGrounded = true;
+                    applyTileEffects(landType, landRow, landCol);
+                } else if (landType > 0) {
                     this.isGrounded = true;
                     applyTileEffects(landType, landRow, landCol);
                 } else if (onSolidGround) {
