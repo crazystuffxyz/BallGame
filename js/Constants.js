@@ -68,67 +68,36 @@ export function normalizeLevelData(data) {
 
     const normalized = {
         ...data,
-        name: typeof data.name === 'string'
-            ? data.name
-            : 'Untitled Level',
-        theme: THEMES[data.theme]
-            ? data.theme
-            : 'sky',
+        name: typeof data.name === 'string' ? data.name : 'Untitled Level',
+        theme: THEMES[data.theme] ? data.theme : 'sky',
         baseTempo: 11,
-        rows: Array.isArray(data.rows)
-            ? data.rows
-            : []
+        rows: Array.isArray(data.rows) ? data.rows : []
     };
 
-    if (
-        typeof data.baseTempo === 'number' &&
-        Number.isFinite(data.baseTempo)
-    ) {
+    if (typeof data.baseTempo === 'number' && Number.isFinite(data.baseTempo)) {
         normalized.baseTempo = data.baseTempo;
-    } else if (
-        typeof data.speed === 'number' &&
-        Number.isFinite(data.speed)
-    ) {
-        normalized.baseTempo =
-            Math.round(data.speed * 11 * 10) / 10;
+    } else if (typeof data.speed === 'number' && Number.isFinite(data.speed)) {
+        normalized.baseTempo = Math.round(data.speed * 11 * 10) / 10;
     }
 
-    normalized.baseTempo = Math.max(
-        2,
-        Math.min(40, normalized.baseTempo)
-    );
+    normalized.baseTempo = Math.max(2, Math.min(40, normalized.baseTempo));
 
-    const normalizeArray = (arr) => {
-        if (!Array.isArray(arr)) {
-            return [0, 0, 0, 0, 0, 0, 0];
-        }
-
-        // Convert legacy five-lane data to seven lanes.
+    const normalizeArray = (arr, defaultValue = 0) => {
+        if (!Array.isArray(arr)) return [defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue];
         if (arr.length === 5) {
-            return [
-                0,
-                Number(arr[0]) || 0,
-                Number(arr[1]) || 0,
-                Number(arr[2]) || 0,
-                Number(arr[3]) || 0,
-                Number(arr[4]) || 0,
-                0
-            ];
+            return [defaultValue, arr[0], arr[1], arr[2], arr[3], arr[4], defaultValue];
         }
-
-        return Array.from({ length: 7 }, (_, i) => {
-            return Number(arr[i]) || 0;
-        });
+        return Array.from({ length: 7 }, (_, i) => (arr[i] !== undefined ? arr[i] : defaultValue));
     };
 
     normalized.rows = normalized.rows.map(row => {
         row = row && typeof row === 'object' ? row : {};
-
         return {
             ...row,
-            tiles: normalizeArray(row.tiles),
-            obstacles: normalizeArray(row.obstacles),
-            tileTempo: normalizeArray(row.tileTempo)
+            tiles: normalizeArray(row.tiles, 0).map(v => Number(v) || 0),
+            obstacles: normalizeArray(row.obstacles, 0).map(v => Number(v) || 0),
+            tileTempo: normalizeArray(row.tileTempo, 0).map(v => Number(v) || 0),
+            tileBgColor: normalizeArray(row.tileBgColor, '').map(v => String(v || ''))
         };
     });
 
@@ -168,7 +137,6 @@ export function generatePresetTrack(type) {
                 if (r === 35 || r === 70 || r === 100) tiles[3] = 6;
 
                 if (r % 12 === 0) obs[3] = 3;
-                // Deterministic alternation replaces non-reproducible Math.random()
                 if (r % 10 === 5) obs[r % 4 === 1 ? 1 : 5] = 2;
                 if (r % 9 === 0) obs[3] = 6;
                 if (r === 32 || r === 68 || r === 110) obs[2] = 7;
@@ -188,7 +156,12 @@ export function generatePresetTrack(type) {
                 if (r === 28 || r === 62 || r === 108) obs[4] = 7;
             }
         }
-        rows.push({ tiles: tiles, obstacles: obs, tileTempo: [0, 0, 0, 0, 0, 0, 0] });
+        rows.push({
+            tiles: tiles,
+            obstacles: obs,
+            tileTempo: [0, 0, 0, 0, 0, 0, 0],
+            tileBgColor: ['', '', '', '', '', '', '']
+        });
     }
     return rows;
 }
