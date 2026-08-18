@@ -1,3 +1,4 @@
+// js/Constants.js
 export const THEMES = {
     sky: {
         name: 'Cloud Sky',
@@ -36,7 +37,7 @@ export const THEMES = {
 export function computeEffectiveTempoBefore(rows, baseTempo, uptoRow) {
     const fallback = (typeof baseTempo === 'number' && !isNaN(baseTempo)) ? baseTempo : 11;
     if (!Array.isArray(rows)) return fallback;
-    const start = Math.min(uptoRow, rows.length) - 1;
+    const start = Math.min(uptoRow - 1, rows.length - 1);
     for (let r = start; r >= 0; r--) {
         const row = rows[r];
         if (!row || !row.tiles || !row.tileTempo) continue;
@@ -66,7 +67,7 @@ export function normalizeLevelData(data) {
     }
     data.baseTempo = Math.max(2, Math.min(40, data.baseTempo));
     if (!Array.isArray(data.rows)) data.rows = [];
-    
+
     // Convert 5-element format to 7-element format if legacy data is loaded
     for (const row of data.rows) {
         if (!row || typeof row !== 'object') continue;
@@ -117,7 +118,8 @@ export function generatePresetTrack(type) {
                 if (r === 35 || r === 70 || r === 100) tiles[3] = 6;
 
                 if (r % 12 === 0) obs[3] = 3;
-                if (r % 10 === 5) obs[Math.random() > 0.5 ? 1 : 5] = 2;
+                // Deterministic alternation replaces non-reproducible Math.random()
+                if (r % 10 === 5) obs[r % 4 === 1 ? 1 : 5] = 2;
                 if (r % 9 === 0) obs[3] = 6;
                 if (r === 32 || r === 68 || r === 110) obs[2] = 7;
             } else {
