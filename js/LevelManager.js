@@ -19,7 +19,6 @@ export class LevelManager {
         this.geometries = {};
         this.fadeOpacity = 0.8;
 
-        // Track disposable per-rebuild resources to prevent memory leaks
         this._tempoMaterials = [];
         this._glassTextures = [];
 
@@ -28,7 +27,9 @@ export class LevelManager {
         this.levelData = null;
         this.glassSlabs = [];
         this.animatedObs = [];
+        this.popBricks = [];
     }
+
     initAssets() {
         this.geometries.tile = new THREE.BoxGeometry(2.0, 0.4, 2.0);
         this.geometries.ball = new THREE.SphereGeometry(0.78, 32, 32);
@@ -45,6 +46,10 @@ export class LevelManager {
         this.geometries.overheadWall = new THREE.BoxGeometry(1.8, 6.0, 1.8);
         this.geometries.borderCell = new THREE.EdgesGeometry(new THREE.BoxGeometry(2.0, 0.05, 2.0));
 
+        // Brick obstacle geometries (1x1x1 brick + flat pad base)
+        this.geometries.brick = new THREE.BoxGeometry(1.0, 1.0, 1.0);
+        this.geometries.brickPad = new THREE.BoxGeometry(1.4, 0.06, 1.4);
+
         this.materials.borderCell = new THREE.LineBasicMaterial({
             color: 0x00f2ff,
             transparent: true,
@@ -53,6 +58,7 @@ export class LevelManager {
 
         this.updateThemeMaterials('sky');
     }
+
     updateThemeMaterials(themeKey) {
         this.themeKey = themeKey;
         const theme = THEMES[themeKey] || THEMES.sky;
@@ -119,7 +125,6 @@ export class LevelManager {
             side: THREE.DoubleSide
         });
 
-        // 50% Translucent Walls
         this.materials.wall = new THREE.MeshStandardMaterial({
             color: 0x223344,
             metalness: 0.6,
@@ -139,7 +144,20 @@ export class LevelManager {
             transparent: true,
             opacity: 0.5
         });
+
+        // Brick Material (Terracotta Red-Orange with Bevel Border)
+        this.materials.brick = new THREE.MeshStandardMaterial({
+            color: 0xbd4622,
+            roughness: 0.5,
+            metalness: 0.1
+        });
+        this.materials.brickPad = new THREE.MeshStandardMaterial({
+            color: 0x3a221a,
+            roughness: 0.7,
+            metalness: 0.3
+        });
     }
+
     createTempoTileMaterial(direction, value) {
         const tex = TextureGen.createTempoTexture(direction, value);
         const emissiveColor = direction === 'up' ? 0x00cc66 : direction === 'down' ? 0xcc0044 : 0x6677aa;
@@ -149,10 +167,10 @@ export class LevelManager {
             emissiveIntensity: 0.55,
             roughness: 0.3
         });
-        // Track for disposal on next rebuild
         this._tempoMaterials.push(mat);
         return mat;
     }
+
     createGlassSlabMaterial(w, d) {
         const cv = document.createElement('canvas');
         cv.width = Math.max(64, Math.round(w * 32));
@@ -165,7 +183,6 @@ export class LevelManager {
         ctx.strokeRect(3, 3, cv.width - 6, cv.height - 6);
 
         const tex = new THREE.CanvasTexture(cv);
-        // Track for disposal on next rebuild
         this._glassTextures.push(tex);
         const mat = new THREE.MeshStandardMaterial({
             map: tex,
@@ -176,6 +193,7 @@ export class LevelManager {
         this._tempoMaterials.push(mat);
         return mat;
     }
+
     _disposeRebuildResources() {
         for (const mat of this._tempoMaterials) {
             if (mat.map) mat.map.dispose();
@@ -187,13 +205,14 @@ export class LevelManager {
         }
         this._glassTextures = [];
     }
+
     loadLevel(levelData) {
         this.levelData = normalizeLevelData(levelData);
         this.updateThemeMaterials(this.levelData.theme || 'sky');
         this.rebuildMeshes();
     }
+
     rebuildMeshes() {
-        // Dispose per-rebuild GPU resources before clearing scene objects
         this._disposeRebuildResources();
 
         while (this.gridGroup.children.length > 0) {
@@ -206,6 +225,7 @@ export class LevelManager {
             this.editorGridGroup.remove(this.editorGridGroup.children[0]);
         }
         this.animatedObs = [];
+        this.popBricks = [];
         this.glassSlabs = [];
 
         if (!this.levelData || !this.levelData.rows) return;
@@ -315,27 +335,31 @@ export class LevelManager {
             }
         }
     }
+
     createObstacleObject(type, x, z, row, lane) {
         const group = new THREE.Group();
         group.position.set(x, 0, z);
         group.userData = { type, row, lane, collected: false };
 
         if (type === 1) {
+            // Tree: Trunk cylinder + Foliage cone
             const trunk = new THREE.Mesh(this.geometries.trunk, this.materials.treeTrunk);
             trunk.position.y = 0.4;
             const foliage = new THREE.Mesh(this.geometries.foliage, this.materials.treeFoliage);
             foliage.position.y = 1.4;
             group.add(trunk, foliage);
-            group.userData.hitRadius = 0.7;
-            group.userData.hitHeight = 2.2;
+            group.userData.isTree = true;
         } else if (type === 2) {
+            // Pyramid: 4-sided cone at y = 0.9, base half-width 0.8, height 1.8
             const pyr = new THREE.Mesh(this.geometries.pyramid, this.materials.pyramid);
             pyr.position.y = 0.9;
             pyr.rotation.y = Math.PI / 4;
             group.add(pyr);
-            group.userData.hitRadius = 0.7;
-            group.userData.hitHeight = 1.8;
+            group.userData.isPyramid = true;
+            group.userData.halfBase = 0.8;
+            group.userData.height = 1.8;
         } else if (type === 3) {
+            // Laser Gate: Left & Right Poles + Center Beam
             const poleL = new THREE.Mesh(this.geometries.laserPole, this.materials.hammer);
             poleL.position.set(-0.9, 1.25, 0);
             const poleR = new THREE.Mesh(this.geometries.laserPole, this.materials.hammer);
@@ -344,24 +368,28 @@ export class LevelManager {
             beam.rotation.z = Math.PI / 2;
             beam.position.set(0, 1.2, 0);
             group.add(poleL, poleR, beam);
-            group.userData.hitRadius = 0.9;
-            group.userData.hitHeight = 2.0;
+            group.userData.isLaser = true;
         } else if (type === 4) {
+            // Hammer: Animated swinging head and stem
             const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.5), this.materials.hammer);
             stem.position.y = 1.5;
             const head = new THREE.Mesh(this.geometries.hammerHead, this.materials.hammer);
             head.position.y = 2.7;
             group.add(stem, head);
-            group.userData.hitRadius = 0.8;
-            group.userData.hitHeight = 3.0;
+            group.userData.isHammer = true;
             this.animatedObs.push({ obj: group, type: 'hammer', speed: 2.5, phase: row * 0.5 });
         } else if (type === 5) {
+            // Drop Block: Box 1.6 x 2.0 x 1.6
             const block = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.0, 1.6), this.materials.pyramid);
             block.position.y = 1.0;
             group.add(block);
-            group.userData.hitRadius = 0.8;
-            group.userData.hitHeight = 2.0;
+            group.userData.isBox = true;
+            group.userData.halfX = 0.8;
+            group.userData.minY = 0.0;
+            group.userData.maxY = 2.0;
+            group.userData.halfZ = 0.8;
         } else if (type === 6) {
+            // Diamond collectible
             const gem = new THREE.Mesh(this.geometries.gem, this.materials.gem);
             gem.position.y = 0.75;
             group.add(gem);
@@ -369,6 +397,7 @@ export class LevelManager {
             group.userData.hitRadius = 0.8;
             this.animatedObs.push({ obj: group, type: 'spin', speed: 3.0 });
         } else if (type === 7) {
+            // Crown collectible
             const crown = new THREE.Mesh(this.geometries.crown, this.materials.crown);
             crown.position.y = 0.75;
             group.add(crown);
@@ -377,28 +406,54 @@ export class LevelManager {
             group.userData.hitRadius = 0.9;
             this.animatedObs.push({ obj: group, type: 'spin', speed: 2.0 });
         } else if (type === 8) {
+            // Wall: Box 1.8 x 8.0 x 1.8
             const wall = new THREE.Mesh(this.geometries.wall, this.materials.wall);
             wall.position.y = 4.0;
             group.add(wall);
-            group.userData.hitRadius = 0.9;
-            group.userData.isWall = true;
-            group.userData.minY = 0;
+            group.userData.isBox = true;
+            group.userData.halfX = 0.9;
+            group.userData.minY = 0.0;
             group.userData.maxY = 8.0;
+            group.userData.halfZ = 0.9;
         } else if (type === 9) {
+            // Ceiling Wall: Box 1.8 x 6.0 x 1.8 starting at y = 2.0
             const overhead = new THREE.Mesh(this.geometries.overheadWall, this.materials.overheadWall);
             overhead.position.y = 5.0;
             const bottomPlate = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.1, 1.8), this.materials.overheadUnder);
             bottomPlate.position.y = 2.0;
             group.add(overhead, bottomPlate);
-            group.userData.hitRadius = 0.9;
-            group.userData.isOverhead = true;
+            group.userData.isBox = true;
+            group.userData.halfX = 0.9;
             group.userData.minY = 1.95;
             group.userData.maxY = 8.0;
+            group.userData.halfZ = 0.9;
+        } else if (type === 10) {
+            // Brick: Flat pad plate + 1x1x1 pop-up brick
+            const pad = new THREE.Mesh(this.geometries.brickPad, this.materials.brickPad);
+            pad.position.y = 0.03;
+            const brick = new THREE.Mesh(this.geometries.brick, this.materials.brick);
+            brick.position.y = -0.5; // Submerged initially
+            group.add(pad, brick);
+
+            const brickData = {
+                group: group,
+                brickMesh: brick,
+                zPos: z,
+                currentY: -0.5,
+                targetY: -0.5,
+                popped: false
+            };
+            group.userData.isBrick = true;
+            group.userData.brickData = brickData;
+            this.popBricks.push(brickData);
         }
         return group;
     }
+
     update(delta, playerZ) {
         const time = performance.now() * 0.001;
+
+        // Animated items & hammers
         for (let item of this.animatedObs) {
             if (item.type === 'spin') {
                 item.obj.rotation.y += item.speed * delta;
@@ -408,6 +463,20 @@ export class LevelManager {
             }
         }
 
+        // Pop-up Bricks: pop up when ball is within 4 blocks (8.0 units behind)
+        for (let b of this.popBricks) {
+            const distanceToPlayer = playerZ - b.zPos;
+            // When player is within 4 blocks (distanceToPlayer >= -8.0)
+            if (distanceToPlayer >= -8.0) {
+                b.targetY = 0.5; // Fully popped up center (spans y = 0.0 to 1.0)
+            }
+            if (b.currentY < b.targetY) {
+                b.currentY = Math.min(b.targetY, b.currentY + delta * 8.0); // Fast, smooth popup
+                b.brickMesh.position.y = b.currentY;
+            }
+        }
+
+        // Glass slabs sinking
         for (let slab of this.glassSlabs) {
             if (!slab.isSolid) {
                 slab.mesh.position.y -= delta * 18.0;
