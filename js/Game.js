@@ -27,9 +27,13 @@ export class Game {
         this.initControls();
         this.initUI();
 
+        // Ensure Player is initialized with the level's actual base tempo on first run
+        this.player.reset(0, this.levelData.baseTempo || 11);
+
         this.countCollectibles();
         this.startLoop();
     }
+
     initScene() {
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -49,6 +53,7 @@ export class Game {
 
         this.setTheme('sky');
     }
+
     setTheme(themeKey) {
         const safeThemeKey = THEMES[themeKey] ? themeKey : 'sky';
         const theme = THEMES[safeThemeKey];
@@ -70,6 +75,7 @@ export class Game {
             themeSelect.value = safeThemeKey;
         }
     }
+
     initLevel() {
         this.level = new LevelManager(this.scene);
         const saved = Storage.load();
@@ -87,12 +93,15 @@ export class Game {
 
         this.countCollectibles();
     }
+
     initPlayer() {
         this.player = new Player(this.scene, this.sound);
     }
+
     initEditor() {
         this.editor = new EditorController(this);
     }
+
     initControls() {
         window.keys = {};
         window.addEventListener('keydown', (e) => {
@@ -149,6 +158,7 @@ export class Game {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
         });
     }
+
     initUI() {
         document.getElementById('mode-toggle-btn').onclick = () => {
             this.setMode(this.mode === 'play' ? 'editor' : 'play');
@@ -180,6 +190,7 @@ export class Game {
             this.setMode('editor');
         };
     }
+
     setMode(mode) {
         this.mode = mode;
         if (mode === 'editor') {
@@ -202,6 +213,7 @@ export class Game {
             this.restart();
         }
     }
+
     loadPreset(presetKey) {
         if (PRESETS[presetKey]) {
             this.levelData = normalizeLevelData(JSON.parse(JSON.stringify(PRESETS[presetKey])));
@@ -213,6 +225,7 @@ export class Game {
             this.countCollectibles();
         }
     }
+
     countCollectibles() {
         let gems = 0;
         let crowns = 0;
@@ -230,6 +243,7 @@ export class Game {
         this.totalCrowns = crowns;
         this.updateHUDStats();
     }
+
     getFarthestTileRow() {
         if (!this.levelData || !this.levelData.rows || this.levelData.rows.length === 0) return 0;
         for (let r = this.levelData.rows.length - 1; r >= 0; r--) {
@@ -240,6 +254,7 @@ export class Game {
         }
         return Math.max(0, this.levelData.rows.length - 1);
     }
+
     startPlay(fromRow = 0) {
         this.setMode('play');
         this.isLevelComplete = false;
@@ -247,6 +262,7 @@ export class Game {
         this.player.reset(fromRow, this.levelData.baseTempo || 11);
         this.sound.startMusic();
     }
+
     restart() {
         document.getElementById('game-overlay').classList.remove('active');
         this.isLevelComplete = false;
@@ -257,6 +273,7 @@ export class Game {
         this.level.rebuildMeshes();
         this.sound.startMusic();
     }
+
     onPlayerDeath(reason) {
         if (this.isLevelComplete) return;
         this.sound.stopMusic();
@@ -269,6 +286,7 @@ export class Game {
             this.showEndModal();
         }, 600);
     }
+
     onLevelComplete() {
         if (this.isLevelComplete) return;
         this.isLevelComplete = true;
@@ -285,6 +303,7 @@ export class Game {
         title.innerText = "LEVEL COMPLETE!";
         this.showEndModal();
     }
+
     showEndModal() {
         const farthestRow = this.getFarthestTileRow();
         const currentRow = Math.max(0, -this.player.pos.z / 2.0);
@@ -296,15 +315,15 @@ export class Game {
         document.getElementById('overlay-progress').innerText = `${pct}%`;
         document.getElementById('game-overlay').classList.add('active');
     }
+
     updateHUDStats() {
         document.getElementById('gem-count').innerText = `${this.gemsCollected}/${this.totalGems}`;
         document.getElementById('crown-count').innerText = `${this.crownsCollected}/${this.totalCrowns}`;
     }
+
     checkItemCollisions() {
         if (this.isLevelComplete) return;
         const pPos = this.player.pos;
-
-        // Hazard Hitbox: 1.1x larger
         const hazardRadius = this.player.hazardRadius;
 
         for (let child of this.level.obstacleGroup.children) {
@@ -350,6 +369,7 @@ export class Game {
             }
         }
     }
+
     update() {
         const delta = Math.min(0.05, this.clock.getDelta());
 
@@ -360,7 +380,6 @@ export class Game {
             }
 
             if (window.keys) {
-                // Keyboard moves targetX at 40 blocks/sec; physics controller handles smooth travel
                 if (window.keys['ArrowLeft'] || window.keys['KeyA']) this.player.targetX -= 40.0 * delta;
                 if (window.keys['ArrowRight'] || window.keys['KeyD']) this.player.targetX += 40.0 * delta;
                 this.player.targetX = Math.max(-7.0, Math.min(7.0, this.player.targetX));
@@ -394,6 +413,7 @@ export class Game {
             this.level.update(delta, 0);
         }
     }
+
     startLoop() {
         const animate = () => {
             this.update();
