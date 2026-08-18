@@ -18,7 +18,7 @@ export class Player {
         this.isDead = false;
         this.speedSqS = 11;
 
-        // Smooth Depth-Space Kinematics (2x Softer Initial Acceleration)
+        // Critically Damped Depth-Space Kinematics (Zero Wobble)
         this.targetX = 0;
         this.velX = 0;   // width/depth
         this.accelX = 0; // width/depth^2
@@ -110,11 +110,14 @@ export class Player {
         // Total depth in tile units traversed this frame
         const deltaS = this.speedSqS * delta;
 
-        // --- 2x Lower Initial Acceleration Buildup Kinematics ---
+        // --- Critically Damped Non-Oscillatory S-Curve Controller ---
+        // Natural frequency & critical damping eliminate all overshoot and hunting
         const V_MAX = 4.5;    // Max lateral speed (width/depth)
-        const A_MAX = 10.0;   // Controlled top acceleration (width/depth^2)
-        const J_MAX = 22.5;   // 2x lower initial onset rate (width/depth^3)
-        const TAU_A = A_MAX / J_MAX; // 0.44 depth units time constant
+        const A_MAX = 14.0;   // Max acceleration (width/depth^2)
+        const J_MAX = 60.0;   // Smooth jerk rate (width/depth^3)
+        const OMEGA = 7.5;    // Natural frequency (rad/depth)
+        const KP = OMEGA * OMEGA; // 56.25 stiffness
+        const KD = 2.0 * OMEGA;   // 15.0 critical damping (zeta = 1.0)
 
         if (deltaS > 0.000001) {
             const maxSubStep = 0.005;
@@ -127,14 +130,19 @@ export class Player {
             for (let i = 0; i < subSteps; i++) {
                 const deltaX = targetTileX - currentTileX;
 
-                // Optimal depth-space braking speed profile
-                const stoppingSpeed = Math.sqrt(2.0 * A_MAX * Math.abs(deltaX));
-                const desiredVel = Math.sign(deltaX) * Math.min(V_MAX, stoppingSpeed);
+                // Deadband snaps when fully settled to prevent any micro-jitter
+                if (Math.abs(deltaX) < 0.0005 && Math.abs(this.velX) < 0.001 && Math.abs(this.accelX) < 0.01) {
+                    this.velX = 0;
+                    this.accelX = 0;
+                    currentTileX = targetTileX;
+                    break;
+                }
 
-                // Desired acceleration bounded by A_MAX
-                const desiredAccel = Math.max(-A_MAX, Math.min(A_MAX, (desiredVel - this.velX) / TAU_A));
+                // Critically damped target acceleration: a = Kp*dx - Kd*v
+                const rawDesiredAccel = KP * deltaX - KD * this.velX;
+                const desiredAccel = Math.max(-A_MAX, Math.min(A_MAX, rawDesiredAccel));
 
-                // Bounded 2x-softer jerk acceleration adjustment
+                // Bounded jerk integration
                 const maxJerkStep = J_MAX * ds;
                 const accelDiff = desiredAccel - this.accelX;
                 const jerkStep = Math.max(-maxJerkStep, Math.min(maxJerkStep, accelDiff));
@@ -152,7 +160,7 @@ export class Player {
         }
 
         this.sphereMesh.rotation.x -= fwdDist / this.radius;
-        this.sphereMesh.rotation.z = -this.velX * 0.08 - this.accelX * 0.002;
+        this.sphereMesh.rotation.z = -this.velX * 0.06; // Smooth banking tied directly to velocity
 
         // 7-Lane Collision Detection & Glass Slab Checking
         let onSolidGround = false;
