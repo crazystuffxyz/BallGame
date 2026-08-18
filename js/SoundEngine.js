@@ -6,6 +6,11 @@ export class SoundEngine {
         this.step = 0;
         this.bpm = 135;
         this.isPlayingMusic = false;
+        
+        // Custom Audio Player
+        this.customAudio = new Audio();
+        this.customAudio.loop = true;
+        this.hasCustomAudio = false;
     }
     init() {
         if (!this.ctx) {
@@ -14,6 +19,16 @@ export class SoundEngine {
         }
         if (this.ctx.state === 'suspended') {
             this.ctx.resume();
+        }
+    }
+    setCustomAudioFile(file) {
+        if (!file) return;
+        const url = URL.createObjectURL(file);
+        this.customAudio.src = url;
+        this.hasCustomAudio = true;
+        if (this.isPlayingMusic && !this.muted) {
+            this.stopSynthMusic();
+            this.customAudio.play().catch(() => {});
         }
     }
     toggleMute() {
@@ -130,16 +145,27 @@ export class SoundEngine {
         } catch(e){}
     }
     startMusic() {
-        if (this.isPlayingMusic || this.muted) return;
+        if (this.muted) return;
         this.init();
         this.isPlayingMusic = true;
+
+        if (this.hasCustomAudio) {
+            this.customAudio.currentTime = 0;
+            this.customAudio.play().catch(() => {});
+            return;
+        }
+
+        this.startSynthMusic();
+    }
+    startSynthMusic() {
+        this.stopSynthMusic();
         this.step = 0;
         const interval = (60 / this.bpm) * 1000 / 4;
         const bassScale = [110, 110, 130.81, 146.83, 110, 98.00, 110, 164.81];
         const leadScale = [440, 523.25, 587.33, 659.25, 783.99, 880];
 
         this.musicTimer = setInterval(() => {
-            if (this.muted || !this.isPlayingMusic) return;
+            if (this.muted || !this.isPlayingMusic || this.hasCustomAudio) return;
             if (this.step % 4 === 0) {
                 this.playTone(120, 'sine', 0.12, 0.35);
             }
@@ -157,11 +183,17 @@ export class SoundEngine {
             this.step = (this.step + 1) % 32;
         }, interval);
     }
-    stopMusic() {
-        this.isPlayingMusic = false;
+    stopSynthMusic() {
         if (this.musicTimer) {
             clearInterval(this.musicTimer);
             this.musicTimer = null;
+        }
+    }
+    stopMusic() {
+        this.isPlayingMusic = false;
+        this.stopSynthMusic();
+        if (this.hasCustomAudio) {
+            this.customAudio.pause();
         }
     }
 }
