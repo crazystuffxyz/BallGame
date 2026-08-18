@@ -18,7 +18,7 @@ export class Player {
         this.isDead = false;
         this.speedSqS = 11;
 
-        // Smooth Depth-Space Kinematics with Lower Jerk Cap
+        // Smooth Depth-Space Kinematics (2x Softer Initial Acceleration)
         this.targetX = 0;
         this.velX = 0;   // width/depth
         this.accelX = 0; // width/depth^2
@@ -56,7 +56,6 @@ export class Player {
         return group;
     }
     createShadow() {
-        // Shadow visual matches the 0.75x ground & diagonal hitbox
         const geo = new THREE.CircleGeometry(this.groundRadius, 24);
         geo.rotateX(-Math.PI / 2);
         const mat = new THREE.MeshBasicMaterial({
@@ -102,7 +101,7 @@ export class Player {
 
         const TILE_SIZE = 2.0;
         const TILE_HALF = 1.0;
-        const groundRadius = this.groundRadius; // 0.75x hitbox for diagonals and tiles
+        const groundRadius = this.groundRadius;
 
         // Forward motion along depth
         const fwdDist = this.speedSqS * TILE_SIZE * delta;
@@ -111,12 +110,11 @@ export class Player {
         // Total depth in tile units traversed this frame
         const deltaS = this.speedSqS * delta;
 
-        // --- Low-Jerk Smooth Kinematic Controller ---
-        // Significantly reduced jerk (J_MAX = 45) removes all twitching on small 1-3 block movements
+        // --- 2x Lower Initial Acceleration Buildup Kinematics ---
         const V_MAX = 4.5;    // Max lateral speed (width/depth)
-        const A_MAX = 14.0;   // Balanced max acceleration (width/depth^2)
-        const J_MAX = 45.0;   // Lower jerk cap for smooth micro-adjustments (width/depth^3)
-        const TAU_A = A_MAX / J_MAX; // 0.31 depth units time constant
+        const A_MAX = 10.0;   // Controlled top acceleration (width/depth^2)
+        const J_MAX = 22.5;   // 2x lower initial onset rate (width/depth^3)
+        const TAU_A = A_MAX / J_MAX; // 0.44 depth units time constant
 
         if (deltaS > 0.000001) {
             const maxSubStep = 0.005;
@@ -136,7 +134,7 @@ export class Player {
                 // Desired acceleration bounded by A_MAX
                 const desiredAccel = Math.max(-A_MAX, Math.min(A_MAX, (desiredVel - this.velX) / TAU_A));
 
-                // Bounded jerk acceleration adjustment
+                // Bounded 2x-softer jerk acceleration adjustment
                 const maxJerkStep = J_MAX * ds;
                 const accelDiff = desiredAccel - this.accelX;
                 const jerkStep = Math.max(-maxJerkStep, Math.min(maxJerkStep, accelDiff));
