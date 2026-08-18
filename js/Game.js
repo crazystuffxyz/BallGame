@@ -50,12 +50,25 @@ export class Game {
         this.setTheme('sky');
     }
     setTheme(themeKey) {
-        const theme = THEMES[themeKey] || THEMES.sky;
-        this.scene.background = TextureGen.createSkyTexture(themeKey);
+        const safeThemeKey = THEMES[themeKey] ? themeKey : 'sky';
+        const theme = THEMES[safeThemeKey];
+
+        this.scene.background = TextureGen.createSkyTexture(safeThemeKey);
         this.scene.fog = new THREE.Fog(theme.fogColor, 20, 110);
         this.dirLight.color.setHex(theme.light);
-        if (this.level) this.level.updateThemeMaterials(themeKey);
-        if (this.levelData) this.levelData.theme = themeKey;
+
+        if (this.level) {
+            this.level.updateThemeMaterials(safeThemeKey);
+        }
+
+        if (this.levelData) {
+            this.levelData.theme = safeThemeKey;
+        }
+
+        const themeSelect = document.getElementById('theme-select');
+        if (themeSelect) {
+            themeSelect.value = safeThemeKey;
+        }
     }
     initLevel() {
         this.level = new LevelManager(this.scene);
@@ -66,6 +79,12 @@ export class Game {
             this.levelData = normalizeLevelData(JSON.parse(JSON.stringify(PRESETS.preset_cloud)));
         }
         this.level.loadLevel(this.levelData);
+
+        const themeSelect = document.getElementById('theme-select');
+        if (themeSelect) {
+            themeSelect.value = this.levelData.theme || 'sky';
+        }
+
         this.countCollectibles();
     }
     initPlayer() {
