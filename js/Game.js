@@ -86,7 +86,6 @@ export class Game {
         });
         window.addEventListener('keyup', (e) => { window.keys[e.code] = false; });
 
-        // --- Clean Unified Touch & Pointer Controller (Zero Mobile Jitter) ---
         let isDragging = false;
         let activePointerId = null;
 
@@ -138,6 +137,20 @@ export class Game {
             const muted = this.sound.toggleMute();
             document.getElementById('sound-btn').innerHTML = muted ? "🔇 <span class='hide-mobile'>Muted</span>" : "🔊 <span class='hide-mobile'>Sound</span>";
         };
+        
+        // Custom Music Upload
+        const musicFileInput = document.getElementById('music-file-input');
+        document.getElementById('music-upload-btn').onclick = () => {
+            musicFileInput.click();
+        };
+        musicFileInput.onchange = (e) => {
+            if (e.target.files && e.target.files[0]) {
+                this.sound.setCustomAudioFile(e.target.files[0]);
+                document.getElementById('music-upload-btn').innerHTML = "🎵 <span class='hide-mobile'>Custom</span>";
+                alert("Custom music loaded!");
+            }
+        };
+
         document.getElementById('restart-btn').onclick = () => this.restart();
         document.getElementById('modal-retry-btn').onclick = () => {
             document.getElementById('game-overlay').classList.remove('active');
@@ -226,7 +239,7 @@ export class Game {
         this.sound.startMusic();
     }
     onPlayerDeath(reason) {
-        if (this.isLevelComplete) return; // Prevent void fall triggering when already finished
+        if (this.isLevelComplete) return;
         this.sound.stopMusic();
         setTimeout(() => {
             if (this.isLevelComplete) return;
@@ -239,12 +252,11 @@ export class Game {
     }
     onLevelComplete() {
         if (this.isLevelComplete) return;
-        this.isLevelComplete = true; // Lock completion so it fires only once
+        this.isLevelComplete = true;
 
         this.sound.stopMusic();
         this.sound.playCrown();
 
-        // Ball disappears on victory
         this.player.mesh.visible = false;
         this.player.shadow.visible = false;
 
@@ -336,7 +348,6 @@ export class Game {
             this.level.update(delta, this.player.pos.z);
             this.checkItemCollisions();
 
-            // Camera half-tracks lateral translation
             this.camera.position.x = this.player.pos.x * 0.5;
             this.camera.position.y = Math.max(4.5, this.player.pos.y + 8.0);
             this.camera.position.z = this.player.pos.z + 5.5;
@@ -346,7 +357,6 @@ export class Game {
                 this.player.pos.z - 2.5
             );
 
-            // Progress & Finish line check
             const farthestRow = this.getFarthestTileRow();
             const currentRow = Math.max(0, -this.player.pos.z / 2.0);
             const progressTarget = Math.max(1, farthestRow);
