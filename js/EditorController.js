@@ -10,6 +10,7 @@ export class EditorController {
         this.selectedCategory = 'tile';
         this.selectedVal = 1;
         this.selectedTempoValue = 15;
+        this.selectedBgColor = '#ff0077';
         this.currentRow = 0;
         this.isPainting = false;
         this.lastPaintedKey = null;
@@ -45,8 +46,8 @@ export class EditorController {
     }
 
     isEventOnUI(e) {
-        if (!e.target) return false;
-        return !!e.target.closest('#editor-topbar, #editor-palette, #editor-bottombar, #hud-top, #game-overlay, #json-modal');
+        if (!e || !e.target) return false;
+        return !!e.target.closest('#editor-topbar, #editor-palette, #editor-bottombar, #hud-top, #game-overlay, #json-modal, button, select, input, textarea');
     }
 
     initDraggablePalette() {
@@ -132,6 +133,21 @@ export class EditorController {
 
         document.getElementById('preset-select').onchange = (e) => this.game.loadPreset(e.target.value);
         document.getElementById('theme-select').onchange = (e) => this.game.setTheme(e.target.value);
+
+        const levelBgPicker = document.getElementById('level-bg-picker');
+        if (levelBgPicker) {
+            levelBgPicker.addEventListener('input', (e) => {
+                this.game.setCustomBackgroundColor(e.target.value);
+            });
+        }
+
+        const bgTileColorInput = document.getElementById('bg-tile-color-input');
+        if (bgTileColorInput) {
+            bgTileColorInput.addEventListener('input', (e) => {
+                this.selectedBgColor = e.target.value;
+            });
+        }
+
         document.getElementById('ed-save-btn').onclick = () => this.save();
         document.getElementById('ed-json-btn').onclick = () => this.openJsonModal();
         document.getElementById('ed-clear-btn').onclick = () => this.clearAll();
@@ -174,15 +190,13 @@ export class EditorController {
     }
 
     initEvents() {
-        const canvas = document.getElementById('game-canvas');
-
         const updatePointerCoords = (clientX, clientY) => {
             this.mouse.x = (clientX / window.innerWidth) * 2 - 1;
             this.mouse.y = -(clientY / window.innerHeight) * 2 + 1;
             this.updateHover();
         };
 
-        canvas.addEventListener('pointerdown', (e) => {
+        window.addEventListener('pointerdown', (e) => {
             if (!this.active || this.isEventOnUI(e)) return;
 
             if (e.button === 2 || e.button === 1 || this.interactionMode === 'pan') {
@@ -195,12 +209,14 @@ export class EditorController {
             if (e.button === 0 && this.interactionMode === 'paint') {
                 this.isPainting = true;
                 updatePointerCoords(e.clientX, e.clientY);
-                this.lastPaintedKey = `${this.hoverRow},${this.hoverLane}`;
-                this.paintAtHover(false);
+                if (this.hoverRow !== null && this.hoverLane !== null) {
+                    this.lastPaintedKey = `${this.hoverRow},${this.hoverLane}`;
+                    this.paintAtHover(false);
+                }
             }
         });
 
-        canvas.addEventListener('pointermove', (e) => {
+        window.addEventListener('pointermove', (e) => {
             if (!this.active) return;
 
             if (this.isPanningTrack) {
@@ -217,7 +233,7 @@ export class EditorController {
 
             updatePointerCoords(e.clientX, e.clientY);
 
-            if (this.isPainting) {
+            if (this.isPainting && this.hoverRow !== null && this.hoverLane !== null) {
                 const currentKey = `${this.hoverRow},${this.hoverLane}`;
                 if (currentKey !== this.lastPaintedKey) {
                     this.lastPaintedKey = currentKey;
@@ -232,7 +248,11 @@ export class EditorController {
             this.lastPaintedKey = null;
         });
 
-        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+        window.addEventListener('contextmenu', (e) => {
+            if (this.active && !this.isEventOnUI(e)) {
+                e.preventDefault();
+            }
+        });
 
         window.addEventListener('wheel', (e) => {
             if (!this.active || this.isEventOnUI(e)) return;
@@ -317,6 +337,7 @@ export class EditorController {
         if (!row) return;
         if (!row.obstacles) row.obstacles = [0, 0, 0, 0, 0, 0, 0];
         if (!row.tileTempo) row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
+        if (!row.tileBgColor) row.tileBgColor = ['', '', '', '', '', '', ''];
 
         if (this.selectedCategory === 'tile') {
             if (this.selectedVal === 4 && !isErase) {
@@ -338,8 +359,12 @@ export class EditorController {
                 row.tiles[this.hoverLane] = val;
                 if (val === 8 && !isErase) {
                     row.tileTempo[this.hoverLane] = this.selectedTempoValue;
+                } else if (val === 9 && !isErase) {
+                    const colorInput = document.getElementById('bg-tile-color-input');
+                    row.tileBgColor[this.hoverLane] = colorInput ? colorInput.value : this.selectedBgColor;
                 } else {
                     row.tileTempo[this.hoverLane] = 0;
+                    row.tileBgColor[this.hoverLane] = '';
                 }
             }
         } else if (this.selectedCategory === 'obstacle') {
@@ -358,6 +383,8 @@ export class EditorController {
         row.obstacles[this.hoverLane] = 0;
         if (!row.tileTempo) row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
         row.tileTempo[this.hoverLane] = 0;
+        if (!row.tileBgColor) row.tileBgColor = ['', '', '', '', '', '', ''];
+        row.tileBgColor[this.hoverLane] = '';
         this.game.level.rebuildMeshes();
         this.game.countCollectibles();
         this.updateTempoPreview();
@@ -398,6 +425,7 @@ export class EditorController {
         if (row) {
             row.tiles = [1, 1, 1, 1, 1, 1, 1];
             row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
+            row.tileBgColor = ['', '', '', '', '', '', ''];
             this.game.level.rebuildMeshes();
         }
     }
@@ -408,6 +436,7 @@ export class EditorController {
             row.tiles = [0, 0, 0, 0, 0, 0, 0];
             row.obstacles = [0, 0, 0, 0, 0, 0, 0];
             row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
+            row.tileBgColor = ['', '', '', '', '', '', ''];
             this.game.level.rebuildMeshes();
             this.game.countCollectibles();
         }
@@ -426,7 +455,12 @@ export class EditorController {
 
     add10Rows() {
         for (let i = 0; i < 10; i++) {
-            this.game.levelData.rows.push({ tiles: [1, 1, 1, 1, 1, 1, 1], obstacles: [0, 0, 0, 0, 0, 0, 0], tileTempo: [0, 0, 0, 0, 0, 0, 0] });
+            this.game.levelData.rows.push({
+                tiles: [1, 1, 1, 1, 1, 1, 1],
+                obstacles: [0, 0, 0, 0, 0, 0, 0],
+                tileTempo: [0, 0, 0, 0, 0, 0, 0],
+                tileBgColor: ['', '', '', '', '', '', '']
+            });
         }
         this.updateScrubber();
         this.game.level.rebuildMeshes();
@@ -438,6 +472,7 @@ export class EditorController {
                 r.tiles = [0, 0, 0, 0, 0, 0, 0];
                 r.obstacles = [0, 0, 0, 0, 0, 0, 0];
                 r.tileTempo = [0, 0, 0, 0, 0, 0, 0];
+                r.tileBgColor = ['', '', '', '', '', '', ''];
             }
             this.game.level.rebuildMeshes();
             this.game.countCollectibles();
@@ -467,6 +502,10 @@ export class EditorController {
         const baseTempoInput = document.getElementById('base-tempo-input');
         if (baseTempoInput && this.game.levelData) {
             baseTempoInput.value = this.game.levelData.baseTempo || 11;
+        }
+        const levelBgPicker = document.getElementById('level-bg-picker');
+        if (levelBgPicker && this.game.levelData?.customBgColor) {
+            levelBgPicker.value = this.game.levelData.customBgColor;
         }
         this.updateTempoPreview();
     }
