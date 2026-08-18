@@ -1,14 +1,15 @@
+// js/Player.js
 import * as THREE from 'three';
 
 export class Player {
     constructor(scene, sound) {
         this.scene = scene;
         this.sound = sound;
-        
+
         // Base Dimensions & Two Distinct Hitboxes
-        this.radius = 0.78; 
-        this.hazardRadius = this.radius * 1.1;               // 1.1x larger for obstacle damage (0.859)
-        this.groundRadius = this.hazardRadius * 0.75;        // 0.75x of hazard hitbox for tiles & diagonals (0.6435)
+        this.radius = 0.78;
+        this.hazardRadius = this.radius * 1.1;           // 1.1x larger for obstacle damage (0.859)
+        this.groundRadius = this.hazardRadius * 0.75;    // 0.75x of hazard hitbox for tiles & diagonals (0.6435)
 
         this.pos = new THREE.Vector3(0, this.radius, 0);
         this.velY = 0;
@@ -18,10 +19,9 @@ export class Player {
         this.isDead = false;
         this.speedSqS = 11;
 
-        // Critically Damped Depth-Space Kinematics (Zero Wobble)
+        // Exponential-decay lateral velocity controller (no persistent acceleration state -> zero wobble)
         this.targetX = 0;
-        this.velX = 0;   // width/depth
-        this.accelX = 0; // width/depth^2
+        this.velX = 0;   // lateral velocity in tiles/depth-unit
 
         // Grid-Locked Parabolic Jump Trajectory in Depth Space
         this.isPadJumping = false;
@@ -38,7 +38,7 @@ export class Player {
     createBallMesh() {
         const group = new THREE.Group();
         const geo = new THREE.SphereGeometry(this.radius, 32, 32);
-        
+
         const cv = document.createElement('canvas');
         cv.width = 128; cv.height = 64;
         const ctx = cv.getContext('2d');
@@ -70,7 +70,6 @@ export class Player {
         this.pos.set(0, this.radius, z);
         this.targetX = 0;
         this.velX = 0;
-        this.accelX = 0;
         this.velY = 0;
         this.isGrounded = true;
         this.isJumping = false;
@@ -107,60 +106,57 @@ export class Player {
         const fwdDist = this.speedSqS * TILE_SIZE * delta;
         this.pos.z -= fwdDist;
 
-        // Total depth in tile units traversed this frame
+        // Depth units traversed this frame (dimensionless lateral controller currency)
         const deltaS = this.speedSqS * delta;
 
-        // --- Critically Damped Non-Oscillatory S-Curve Controller ---
-        // Natural frequency & critical damping eliminate all overshoot and hunting
-        const V_MAX = 4.5;    // Max lateral speed (width/depth)
-        const A_MAX = 14.0;   // Max acceleration (width/depth^2)
-        const J_MAX = 60.0;   // Smooth jerk rate (width/depth^3)
-        const OMEGA = 7.5;    // Natural frequency (rad/depth)
-        const KP = OMEGA * OMEGA; // 56.25 stiffness
-        const KD = 2.0 * OMEGA;   // 15.0 critical damping (zeta = 1.0)
+        // --- Exponential-Decay Lateral Velocity Controller ---
+        // desiredVel = Kp * error (clamped to V_MAX) then velX decays toward desiredVel
+        // via 1st-order exponential filter. No acceleration state -> mathematically
+        // guaranteed zero-overshoot and zero-wobble after input stops.
+        //
+        // Constraint derivation (all in tile/depth units):
+        //   V_MAX = 5.0  -> max 5 tiles lateral per 1 tile forward (constraint #2/#3)
+        //   Kp = 1.0     -> at 1-tile error desiredVel = 1 (slow, smooth for small dist, constraint #1)
+        //                    at 5-tile error desiredVel = 5 = V_MAX
+        //   RESPONSE=30  -> velocity half-life = 0.023 depth units, tracks target almost instantly
+        const V_MAX = 5.0;
+        const Kp = 1.0;
+        const RESPONSE = 30.0;
 
-        if (deltaS > 0.000001) {
-            const maxSubStep = 0.005;
-            const subSteps = Math.max(1, Math.ceil(deltaS / maxSubStep));
+        if (deltaS > 1e-6) {
+            const subSteps = Math.max(1, Math.ceil(deltaS / 0.02));
             const ds = deltaS / subSteps;
+            const alpha = 1.0 - Math.exp(-RESPONSE * ds);
 
-            let currentTileX = this.pos.x / TILE_SIZE;
-            const targetTileX = this.targetX / TILE_SIZE;
+            let curX = this.pos.x / TILE_SIZE;
+            const tgtX = this.targetX / TILE_SIZE;
 
             for (let i = 0; i < subSteps; i++) {
-                const deltaX = targetTileX - currentTileX;
+                const err = tgtX - curX;
 
-                // Deadband snaps when fully settled to prevent any micro-jitter
-                if (Math.abs(deltaX) < 0.0005 && Math.abs(this.velX) < 0.001 && Math.abs(this.accelX) < 0.01) {
+                // Snap-to-target deadband: eliminates all micro-jitter when settled
+                if (Math.abs(err) < 0.0003 && Math.abs(this.velX) < 0.0003) {
                     this.velX = 0;
-                    this.accelX = 0;
-                    currentTileX = targetTileX;
+                    curX = tgtX;
                     break;
                 }
 
-                // Critically damped target acceleration: a = Kp*dx - Kd*v
-                const rawDesiredAccel = KP * deltaX - KD * this.velX;
-                const desiredAccel = Math.max(-A_MAX, Math.min(A_MAX, rawDesiredAccel));
+                // Target lateral speed proportional to error, clamped to V_MAX
+                const desiredVel = Math.max(-V_MAX, Math.min(V_MAX, Kp * err));
 
-                // Bounded jerk integration
-                const maxJerkStep = J_MAX * ds;
-                const accelDiff = desiredAccel - this.accelX;
-                const jerkStep = Math.max(-maxJerkStep, Math.min(maxJerkStep, accelDiff));
+                // Exponential approach: v decays toward desiredVel each sub-step
+                // When target reached: desiredVel -> 0, velX -> 0 smoothly. No overshoot.
+                this.velX += (desiredVel - this.velX) * alpha;
 
-                this.accelX += jerkStep;
-                this.accelX = Math.max(-A_MAX, Math.min(A_MAX, this.accelX));
-
-                this.velX += this.accelX * ds;
-                this.velX = Math.max(-V_MAX, Math.min(V_MAX, this.velX));
-
-                currentTileX += this.velX * ds;
+                curX += this.velX * ds;
             }
 
-            this.pos.x = Math.max(-7.0, Math.min(7.0, currentTileX * TILE_SIZE));
+            this.pos.x = Math.max(-7.0, Math.min(7.0, curX * TILE_SIZE));
         }
 
         this.sphereMesh.rotation.x -= fwdDist / this.radius;
-        this.sphereMesh.rotation.z = -this.velX * 0.06; // Smooth banking tied directly to velocity
+        // Visual banking tied to velocity; coefficient tuned so V_MAX -> ~11 degrees lean
+        this.sphereMesh.rotation.z = -this.velX * 0.04;
 
         // 7-Lane Collision Detection & Glass Slab Checking
         let onSolidGround = false;
@@ -297,7 +293,7 @@ export class Player {
                 this.velY = 0;
 
                 const landRow = Math.round(this.padLaunchRow + this.padJumpDistance);
-                const landCol = Math.max(0, Math.min(6, Math.floor((this.pos.x + 7.0) / 2.0)));
+                const landCol = Math.max(0, Math.min(6, Math.round((this.pos.x + 7.0) / 2.0)));
                 const rowData = level.levelData.rows[landRow];
                 const landType = (rowData && rowData.tiles) ? rowData.tiles[landCol] : 0;
 
@@ -340,7 +336,7 @@ export class Player {
         this.shadow.position.set(this.pos.x, 0.02, this.pos.z);
         const shadowScale = Math.max(0.2, 1.0 - (this.pos.y - this.radius) * 0.15);
         this.shadow.scale.set(shadowScale, shadowScale, shadowScale);
-        this.shadow.visible = !this.isFallingIntoVoid && this.pos.y > -0.5;
+        this.shadow.visible = !this.isFallingIntoVoid && this.pos.y > -1.0;
     }
     crash(reason = "obstacle") {
         if (this.isDead) return;
