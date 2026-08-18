@@ -6,9 +6,9 @@ export class Player {
         this.scene = scene;
         this.sound = sound;
 
-        // Base Dimensions & Multipliers:
+        // Base Dimensions & Multipliers
         this.radius = 0.78;
-        this.hazardRadius = this.radius * 1.0;           // 1.0x radius for exact 3D shape testing (0.78)
+        this.hazardRadius = this.radius * 0.9;           // 0.9x radius for obstacle damage (0.702)
         this.groundRadius = this.radius * 0.5;           // 0.5x radius for ground tile contact (0.39)
 
         this.pos = new THREE.Vector3(0, this.radius, 0);
@@ -19,7 +19,7 @@ export class Player {
         this.isDead = false;
         this.speedSqS = 11;
 
-        // Debounce lock for speed/tempo tiles
+        // Debounce lock for tile effects
         this.lastTileEffectKey = null;
 
         // Lateral velocity controller
@@ -305,6 +305,13 @@ export class Player {
                 const row = level.levelData.rows[r];
                 const target = row?.tileTempo?.[c] || level.levelData.baseTempo || 11;
                 this.applyTempoTile(target);
+            } else if (type === 9) {
+                // Background Switcher Tile
+                const row = level.levelData.rows[r];
+                const targetColor = row?.tileBgColor?.[c] || '#00f2ff';
+                if (window.game) {
+                    window.game.setCustomBackgroundColor(targetColor);
+                }
             }
         };
 
