@@ -80,6 +80,8 @@
                         <option value="inferno">Inferno Temple</option>
                         <option value="cosmos">Deep Cosmos</option>
                     </select>
+                    <label class="hide-mobile" style="font-size: 11px; font-weight: bold; margin-left: 4px;" title="Custom Background Color">🎨 BG:</label>
+                    <input type="color" id="level-bg-picker" value="#5fa8ff" class="editor-input color-picker-input" title="Level Custom Background RGB">
                     <label class="hide-mobile" style="font-size: 11px; font-weight: bold; margin-left: 4px;" title="Starting speed">Tempo:</label>
                     <input type="number" id="base-tempo-input" class="editor-input" min="2" max="40" step="0.5" value="11" style="width:50px;">
                 </div>
@@ -117,9 +119,14 @@
                             <button class="tool-btn" data-category="tile" data-val="5"><span class="icon">⚡</span>Speed Up</button>
                             <button class="tool-btn" data-category="tile" data-val="6"><span class="icon">🛑</span>Speed Down</button>
                             <button class="tool-btn" data-category="tile" data-val="7"><span class="icon">✨</span>Fade Tile</button>
+                            <button class="tool-btn" data-category="tile" data-val="9"><span class="icon">🎨</span>BG Switch</button>
                             <button class="tool-btn" data-category="tile" data-val="0"><span class="icon">⬛</span>Void (Erase)</button>
                         </div>
-                        <div id="glass-settings" style="margin-top: 8px; background: #0d1527; padding: 6px 8px; border-radius: 6px; border: 1px solid rgba(0,242,255,0.25); display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 11px;">
+                        <div id="bg-tile-settings" style="margin-top: 8px; background: #0d1527; padding: 6px 8px; border-radius: 6px; border: 1px solid rgba(0,242,255,0.25); display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 11px;">
+                            <span>🎨 Switch Color:</span>
+                            <input type="color" id="bg-tile-color-input" value="#ff0077" class="editor-input color-picker-input">
+                        </div>
+                        <div id="glass-settings" style="margin-top: 6px; background: #0d1527; padding: 6px 8px; border-radius: 6px; border: 1px solid rgba(0,242,255,0.25); display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 11px;">
                             <span>🪟 Glass Size:</span>
                             <label style="display:flex; align-items:center; gap:2px;">W: <input type="number" id="glass-w-input" class="editor-input" min="1" max="7" value="1" style="width:38px; padding:2px 4px; font-size:11px;"></label>
                             <label style="display:flex; align-items:center; gap:2px;">D: <input type="number" id="glass-d-input" class="editor-input" min="1" max="10" value="1" style="width:38px; padding:2px 4px; font-size:11px;"></label>
