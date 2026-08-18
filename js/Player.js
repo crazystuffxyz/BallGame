@@ -7,7 +7,7 @@ export class Player {
         
         // Base Dimensions & Two Distinct Hitboxes
         this.radius = 0.78; 
-        this.hazardRadius = this.radius * 1.1;               // 1.1x larger for obstacle damage (0.858)
+        this.hazardRadius = this.radius * 1.1;               // 1.1x larger for obstacle damage (0.859)
         this.groundRadius = this.hazardRadius * 0.75;        // 0.75x of hazard hitbox for tiles & diagonals (0.6435)
 
         this.pos = new THREE.Vector3(0, this.radius, 0);
