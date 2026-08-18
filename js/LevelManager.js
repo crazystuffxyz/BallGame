@@ -7,12 +7,10 @@ export class LevelManager {
         this.scene = scene;
         this.gridGroup = new THREE.Group();
         this.obstacleGroup = new THREE.Group();
-        this.decorGroup = new THREE.Group();
         this.editorGridGroup = new THREE.Group();
         
         this.scene.add(this.gridGroup);
         this.scene.add(this.obstacleGroup);
-        this.scene.add(this.decorGroup);
         this.scene.add(this.editorGridGroup);
 
         this.themeKey = 'sky';
@@ -115,7 +113,7 @@ export class LevelManager {
             side: THREE.DoubleSide
         });
 
-        // 50% Translucent Walls & Ceiling Obstacles
+        // 50% Translucent Walls
         this.materials.wall = new THREE.MeshStandardMaterial({
             color: 0x223344,
             metalness: 0.6,
@@ -135,30 +133,6 @@ export class LevelManager {
             transparent: true,
             opacity: 0.5
         });
-
-        this.buildDecorations();
-    }
-    buildDecorations() {
-        while (this.decorGroup.children.length > 0) {
-            this.decorGroup.remove(this.decorGroup.children[0]);
-        }
-        const cloudGeo = new THREE.DodecahedronGeometry(4, 1);
-        const cloudMat = new THREE.MeshStandardMaterial({
-            color: 0xffffff,
-            roughness: 1.0,
-            transparent: true,
-            opacity: 0.7
-        });
-        for (let i = 0; i < 30; i++) {
-            const cloud = new THREE.Mesh(cloudGeo, cloudMat);
-            const z = -i * 15 - 20;
-            const x = (Math.random() - 0.5) * 80 + (Math.random() > 0.5 ? 25 : -25);
-            const y = (Math.random() - 0.5) * 20 - 5;
-            cloud.position.set(x, y, z);
-            const s = Math.random() * 2 + 1;
-            cloud.scale.set(s * 2, s, s);
-            this.decorGroup.add(cloud);
-        }
     }
     createTempoTileMaterial(direction, value) {
         const tex = TextureGen.createTempoTexture(direction, value);
@@ -171,7 +145,6 @@ export class LevelManager {
         });
     }
     createGlassSlabMaterial(w, d) {
-        // Creates a seamless custom-sized glass slab material with constant border width
         const cv = document.createElement('canvas');
         cv.width = Math.max(64, Math.round(w * 32));
         cv.height = Math.max(64, Math.round(d * 32));
@@ -230,7 +203,6 @@ export class LevelManager {
                 if (tileType === 4) {
                     const key = `${r},${c}`;
                     if (!visitedGlass.has(key)) {
-                        // Find connected glass dimensions W x D
                         let gw = 1;
                         while (c + gw < 7 && row.tiles[c + gw] === 4 && !visitedGlass.has(`${r},${c + gw}`)) {
                             gw++;
@@ -254,7 +226,6 @@ export class LevelManager {
                             }
                         }
 
-                        // Create single contiguous glass mesh
                         const slabGeo = new THREE.BoxGeometry(gw * TILE_W, 0.4, gd * TILE_D);
                         const slabMat = this.createGlassSlabMaterial(gw, gd);
                         const slabMesh = new THREE.Mesh(slabGeo, slabMat);
@@ -276,8 +247,7 @@ export class LevelManager {
                             maxZ: centerZ + (gd * TILE_D) / 2,
                             triggered: false,
                             entryZ: null,
-                            isSolid: true,
-                            fallProgress: 0
+                            isSolid: true
                         };
                         
                         slabMesh.userData = slabData;
@@ -411,7 +381,6 @@ export class LevelManager {
             }
         }
 
-        // Animate falling glass slabs
         for (let slab of this.glassSlabs) {
             if (!slab.isSolid) {
                 slab.mesh.position.y -= delta * 18.0;
