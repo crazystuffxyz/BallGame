@@ -78,7 +78,7 @@ export class Game {
         window.addEventListener('keydown', (e) => {
             window.keys[e.code] = true;
             if (e.code === 'Space') {
-                if (this.mode === 'editor') this.startPlay(this.editor.currentRow);
+                if (this.mode === 'editor') this.startPlay(0);
             }
             if (e.code === 'KeyR') {
                 this.restart();
@@ -138,7 +138,6 @@ export class Game {
             document.getElementById('sound-btn').innerHTML = muted ? "🔇 <span class='hide-mobile'>Muted</span>" : "🔊 <span class='hide-mobile'>Sound</span>";
         };
         
-        // Custom Music Upload
         const musicFileInput = document.getElementById('music-file-input');
         document.getElementById('music-upload-btn').onclick = () => {
             musicFileInput.click();
