@@ -1,3 +1,4 @@
+// js/LevelManager.js
 import * as THREE from 'three';
 import { TextureGen } from './TextureGen.js';
 import { THEMES, computeEffectiveTempoBefore, tempoDirection, normalizeLevelData } from './Constants.js';
@@ -8,7 +9,7 @@ export class LevelManager {
         this.gridGroup = new THREE.Group();
         this.obstacleGroup = new THREE.Group();
         this.editorGridGroup = new THREE.Group();
-        
+
         this.scene.add(this.gridGroup);
         this.scene.add(this.obstacleGroup);
         this.scene.add(this.editorGridGroup);
@@ -17,6 +18,11 @@ export class LevelManager {
         this.materials = {};
         this.geometries = {};
         this.fadeOpacity = 0.8;
+
+        // Track disposable per-rebuild resources to prevent memory leaks
+        this._tempoMaterials = [];
+        this._glassTextures = [];
+
         this.initAssets();
 
         this.levelData = null;
@@ -25,7 +31,7 @@ export class LevelManager {
     }
     initAssets() {
         this.geometries.tile = new THREE.BoxGeometry(2.0, 0.4, 2.0);
-        this.geometries.ball = new THREE.SphereGeometry(0.78, 32, 32); 
+        this.geometries.ball = new THREE.SphereGeometry(0.78, 32, 32);
         this.geometries.pyramid = new THREE.ConeGeometry(0.8, 1.8, 4);
         this.geometries.trunk = new THREE.CylinderGeometry(0.2, 0.3, 0.8, 8);
         this.geometries.foliage = new THREE.ConeGeometry(0.9, 1.6, 6);
@@ -34,7 +40,7 @@ export class LevelManager {
         this.geometries.hammerHead = new THREE.BoxGeometry(1.6, 0.8, 0.8);
         this.geometries.gem = new THREE.OctahedronGeometry(0.45, 0);
         this.geometries.crown = new THREE.CylinderGeometry(0.5, 0.3, 0.4, 5, 1, true);
-        
+
         this.geometries.wall = new THREE.BoxGeometry(1.8, 8.0, 1.8);
         this.geometries.overheadWall = new THREE.BoxGeometry(1.8, 6.0, 1.8);
         this.geometries.borderCell = new THREE.EdgesGeometry(new THREE.BoxGeometry(2.0, 0.05, 2.0));
@@ -50,7 +56,7 @@ export class LevelManager {
     updateThemeMaterials(themeKey) {
         this.themeKey = themeKey;
         const theme = THEMES[themeKey] || THEMES.sky;
-        
+
         const floorTex = TextureGen.createTileTexture(theme.tileColors.main, theme.tileColors.sub, theme.tileColors.border);
         floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
 
@@ -128,7 +134,7 @@ export class LevelManager {
             transparent: true,
             opacity: 0.5
         });
-        this.materials.overheadUnder = new THREE.MeshBasicMaterial({ 
+        this.materials.overheadUnder = new THREE.MeshBasicMaterial({
             color: 0xff0066,
             transparent: true,
             opacity: 0.5
@@ -137,12 +143,15 @@ export class LevelManager {
     createTempoTileMaterial(direction, value) {
         const tex = TextureGen.createTempoTexture(direction, value);
         const emissiveColor = direction === 'up' ? 0x00cc66 : direction === 'down' ? 0xcc0044 : 0x6677aa;
-        return new THREE.MeshStandardMaterial({
+        const mat = new THREE.MeshStandardMaterial({
             map: tex,
             emissive: emissiveColor,
             emissiveIntensity: 0.55,
             roughness: 0.3
         });
+        // Track for disposal on next rebuild
+        this._tempoMaterials.push(mat);
+        return mat;
     }
     createGlassSlabMaterial(w, d) {
         const cv = document.createElement('canvas');
@@ -154,14 +163,29 @@ export class LevelManager {
         ctx.lineWidth = 6;
         ctx.strokeStyle = '#ffffff';
         ctx.strokeRect(3, 3, cv.width - 6, cv.height - 6);
-        
+
         const tex = new THREE.CanvasTexture(cv);
-        return new THREE.MeshStandardMaterial({
+        // Track for disposal on next rebuild
+        this._glassTextures.push(tex);
+        const mat = new THREE.MeshStandardMaterial({
             map: tex,
             transparent: true,
             opacity: 0.75,
             roughness: 0.1
         });
+        this._tempoMaterials.push(mat);
+        return mat;
+    }
+    _disposeRebuildResources() {
+        for (const mat of this._tempoMaterials) {
+            if (mat.map) mat.map.dispose();
+            mat.dispose();
+        }
+        this._tempoMaterials = [];
+        for (const tex of this._glassTextures) {
+            tex.dispose();
+        }
+        this._glassTextures = [];
     }
     loadLevel(levelData) {
         this.levelData = normalizeLevelData(levelData);
@@ -169,6 +193,9 @@ export class LevelManager {
         this.rebuildMeshes();
     }
     rebuildMeshes() {
+        // Dispose per-rebuild GPU resources before clearing scene objects
+        this._disposeRebuildResources();
+
         while (this.gridGroup.children.length > 0) {
             this.gridGroup.remove(this.gridGroup.children[0]);
         }
@@ -229,7 +256,7 @@ export class LevelManager {
                         const slabGeo = new THREE.BoxGeometry(gw * TILE_W, 0.4, gd * TILE_D);
                         const slabMat = this.createGlassSlabMaterial(gw, gd);
                         const slabMesh = new THREE.Mesh(slabGeo, slabMat);
-                        
+
                         const centerX = x + ((gw - 1) * TILE_W) / 2;
                         const centerZ = z - ((gd - 1) * TILE_D) / 2;
                         slabMesh.position.set(centerX, -0.2, centerZ);
@@ -249,7 +276,7 @@ export class LevelManager {
                             entryZ: null,
                             isSolid: true
                         };
-                        
+
                         slabMesh.userData = slabData;
                         this.glassSlabs.push(slabData);
                         this.gridGroup.add(slabMesh);
