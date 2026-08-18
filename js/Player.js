@@ -19,6 +19,9 @@ export class Player {
         this.isDead = false;
         this.speedSqS = 11;
 
+        // Prevent tile effects from being applied every frame.
+        this.lastTileEffectKey = null;
+
         // Exponential-decay lateral velocity controller (no persistent acceleration state -> zero wobble)
         this.targetX = 0;
         this.velX = 0;   // lateral velocity in tiles/depth-unit
@@ -76,7 +79,19 @@ export class Player {
         this.isPadJumping = false;
         this.isFallingIntoVoid = false;
         this.isDead = false;
-        this.speedSqS = Math.max(2, Math.min(40, (typeof baseTempo === 'number' && !isNaN(baseTempo)) ? baseTempo : 11));
+
+        this.lastTileEffectKey = null;
+
+        this.speedSqS = Math.max(
+            2,
+            Math.min(
+                40,
+                typeof baseTempo === 'number' && !isNaN(baseTempo)
+                    ? baseTempo
+                    : 11
+            )
+        );
+
         this.mesh.visible = true;
         this.shadow.visible = true;
         this.mesh.position.copy(this.pos);
@@ -266,18 +281,41 @@ export class Player {
         }
 
         const applyTileEffects = (type, r, c) => {
-            if (type === 2) this.startPadJump(r, 4.0, 3.2); // Exact 4-tile jump
-            else if (type === 3) this.startPadJump(r, 8.0, 4.8); // Exact 8-tile jump
-            else if (type === 5) {
-                this.speedSqS = Math.max(2, Math.min(40, this.speedSqS * 1.45));
+            if (type <= 0 || r < 0 || c < 0) {
+                this.lastTileEffectKey = null;
+                return;
+            }
+
+            const effectKey = `${r}:${c}:${type}`;
+
+            // Do not repeatedly apply an effect while standing on the same tile.
+            if (this.lastTileEffectKey === effectKey) return;
+
+            this.lastTileEffectKey = effectKey;
+
+            if (type === 2) {
+                this.startPadJump(r, 4.0, 3.2);
+            } else if (type === 3) {
+                this.startPadJump(r, 8.0, 4.8);
+            } else if (type === 5) {
+                this.speedSqS = Math.max(
+                    2,
+                    Math.min(40, this.speedSqS * 1.45)
+                );
                 this.sound.playSpeed();
-            }
-            else if (type === 6) {
-                this.speedSqS = Math.max(2, Math.min(40, this.speedSqS * 0.85));
-            }
-            else if (type === 8) {
+            } else if (type === 6) {
+                this.speedSqS = Math.max(
+                    2,
+                    Math.min(40, this.speedSqS * 0.85)
+                );
+                this.sound.playSpeed();
+            } else if (type === 8) {
                 const row = level.levelData.rows[r];
-                const target = (row && row.tileTempo && row.tileTempo[c]) || level.levelData.baseTempo || 11;
+                const target =
+                    row?.tileTempo?.[c] ||
+                    level.levelData.baseTempo ||
+                    11;
+
                 this.applyTempoTile(target);
             }
         };
@@ -308,6 +346,7 @@ export class Player {
                     applyTileEffects(primaryTileType, touchedRow, touchedCol);
                 } else {
                     this.isFallingIntoVoid = true;
+                    this.lastTileEffectKey = null;
                 }
             } else {
                 const arcY = 4.0 * this.padJumpHeight * progress * (1.0 - progress);
@@ -320,6 +359,7 @@ export class Player {
         } else if (!onSolidGround) {
             this.isFallingIntoVoid = true;
             this.isGrounded = false;
+            this.lastTileEffectKey = null;
         } else {
             // Rolling on solid ground
             this.pos.y = this.radius;
