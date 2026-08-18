@@ -27,9 +27,7 @@ export class Game {
         this.initControls();
         this.initUI();
 
-        // Ensure Player is initialized with the level's actual base tempo on first run
         this.player.reset(0, this.levelData.baseTempo || 11);
-
         this.countCollectibles();
         this.startLoop();
     }
@@ -68,11 +66,29 @@ export class Game {
 
         if (this.levelData) {
             this.levelData.theme = safeThemeKey;
+            delete this.levelData.customBgColor;
         }
 
         const themeSelect = document.getElementById('theme-select');
         if (themeSelect) {
             themeSelect.value = safeThemeKey;
+        }
+    }
+
+    setCustomBackgroundColor(hexColor) {
+        if (!hexColor) return;
+        const color = new THREE.Color(hexColor);
+        this.scene.background = TextureGen.createSkyTextureFromColor(hexColor);
+        this.scene.fog = new THREE.Fog(color.getHex(), 20, 110);
+        this.dirLight.color.set(color);
+
+        if (this.levelData) {
+            this.levelData.customBgColor = hexColor;
+        }
+
+        const levelBgPicker = document.getElementById('level-bg-picker');
+        if (levelBgPicker) {
+            levelBgPicker.value = hexColor;
         }
     }
 
@@ -86,9 +102,11 @@ export class Game {
         }
         this.level.loadLevel(this.levelData);
 
-        const themeSelect = document.getElementById('theme-select');
-        if (themeSelect) {
-            themeSelect.value = this.levelData.theme || 'sky';
+        if (this.levelData.customBgColor) {
+            this.setCustomBackgroundColor(this.levelData.customBgColor);
+        } else {
+            const themeSelect = document.getElementById('theme-select');
+            if (themeSelect) themeSelect.value = this.levelData.theme || 'sky';
         }
 
         this.countCollectibles();
@@ -126,7 +144,7 @@ export class Game {
 
         const onPointerDown = (e) => {
             if (this.mode !== 'play' || this.isLevelComplete) return;
-            if (e.target.closest('#editor-panel') || e.target.closest('#hud-top')) return;
+            if (e.target.closest('#editor-panel, #hud-top, #editor-topbar, #editor-palette, #editor-bottombar')) return;
 
             activePointerId = e.pointerId;
             isDragging = true;
@@ -321,7 +339,6 @@ export class Game {
         document.getElementById('crown-count').innerText = `${this.crownsCollected}/${this.totalCrowns}`;
     }
 
-    // Exact 3D Distance Functions
     sqDistPointAABB(px, py, pz, minX, maxX, minY, maxY, minZ, maxZ) {
         let sqDist = 0;
         if (px < minX) sqDist += (minX - px) * (minX - px);
@@ -377,7 +394,7 @@ export class Game {
             const ox = child.position.x;
             const oz = child.position.z;
 
-            // 1. Items: Diamond (6) & Crown (7)
+            // 1. Collectible Items
             if (u.isItem) {
                 const dist3D = child.position.distanceTo(P);
                 if (dist3D < (u.hitRadius + R)) {
@@ -395,7 +412,7 @@ export class Game {
                 continue;
             }
 
-            // 2. Pyramid (2): Exact 3D Sloped Pyramid Test
+            // 2. Pyramid (2)
             if (u.isPyramid) {
                 const sqDist = this.sqDistPointPyramid(P.x, P.y, P.z, ox, 0, oz, u.halfBase, u.height);
                 if (sqDist <= Rsq) {
@@ -405,7 +422,7 @@ export class Game {
                 continue;
             }
 
-            // 3. Tree (1): Cylinder Trunk + Cone Foliage
+            // 3. Tree (1)
             if (u.isTree) {
                 const trunkSq = this.sqDistPointCylinder(P.x, P.y, P.z, ox, oz, 0, 0.8, 0.3);
                 if (trunkSq <= Rsq) {
@@ -420,7 +437,7 @@ export class Game {
                 continue;
             }
 
-            // 4. Laser Gate (3): Left & Right Posts + Beam Capsule
+            // 4. Laser Gate (3)
             if (u.isLaser) {
                 const poleLSq = this.sqDistPointCylinder(P.x, P.y, P.z, ox - 0.9, oz, 0, 2.5, 0.1);
                 const poleRSq = this.sqDistPointCylinder(P.x, P.y, P.z, ox + 0.9, oz, 0, 2.5, 0.1);
@@ -428,7 +445,6 @@ export class Game {
                     this.player.crash("obstacle");
                     return;
                 }
-                // Beam cylinder along X between -0.9 and +0.9 at Y = 1.2
                 const clampBeamX = Math.max(ox - 0.9, Math.min(P.x, ox + 0.9));
                 const bDx = P.x - clampBeamX;
                 const bDy = P.y - 1.2;
@@ -441,7 +457,7 @@ export class Game {
                 continue;
             }
 
-            // 5. Hammer (4): Rotating head & stem
+            // 5. Hammer (4)
             if (u.isHammer) {
                 const hdx = P.x - ox;
                 const hdz = P.z - oz;
@@ -468,10 +484,9 @@ export class Game {
                 continue;
             }
 
-            // 7. Pop-up Brick (10): 1x1x1 Cube at dynamic Y
+            // 7. Pop-up Brick (10)
             if (u.isBrick && u.brickData) {
                 const bY = u.brickData.currentY;
-                // Only collides if partially or fully above ground
                 if (bY > -0.45) {
                     const sqDist = this.sqDistPointAABB(
                         P.x, P.y, P.z,
