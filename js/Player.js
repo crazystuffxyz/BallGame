@@ -9,7 +9,7 @@ export class Player {
         // Base Dimensions & Hitboxes
         this.radius = 0.78;
         this.hazardRadius = this.radius * 1.1;           // 0.858 for obstacle collisions
-        this.groundRadius = this.radius * 0.35;          // 0.663 for solid ground contact
+        this.groundRadius = this.radius * 0.5;          // 0.663 for solid ground contact
 
         this.pos = new THREE.Vector3(0, this.radius, 0);
         this.velY = 0;
