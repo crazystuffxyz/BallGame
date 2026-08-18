@@ -37,6 +37,8 @@
                 </div>
             </div>
             <div id="top-controls">
+                <input type="file" id="music-file-input" accept="audio/*" style="display:none;">
+                <button id="music-upload-btn" class="hud-btn">🎵 <span class="hide-mobile">Music</span></button>
                 <button id="sound-btn" class="hud-btn">🔊 <span class="hide-mobile">Sound</span></button>
                 <button id="restart-btn" class="hud-btn">🔄 <span class="hide-mobile">Restart</span></button>
                 <button id="mode-toggle-btn" class="hud-btn primary">🛠️ Editor</button>
@@ -116,7 +118,6 @@
                             <button class="tool-btn" data-category="tile" data-val="7"><span class="icon">✨</span>Fade Tile</button>
                             <button class="tool-btn" data-category="tile" data-val="0"><span class="icon">⬛</span>Void (Erase)</button>
                         </div>
-                        <!-- Glass Customization Settings -->
                         <div id="glass-settings" style="margin-top: 8px; background: #0d1527; padding: 6px 8px; border-radius: 6px; border: 1px solid rgba(0,242,255,0.25); display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 11px;">
                             <span>🪟 Glass Size:</span>
                             <label style="display:flex; align-items:center; gap:2px;">W: <input type="number" id="glass-w-input" class="editor-input" min="1" max="7" value="1" style="width:38px; padding:2px 4px; font-size:11px;"></label>
