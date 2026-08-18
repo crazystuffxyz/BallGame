@@ -1,3 +1,4 @@
+// js/Game.js
 import * as THREE from 'three';
 import { SoundEngine } from './SoundEngine.js';
 import { LevelManager } from './LevelManager.js';
@@ -98,7 +99,7 @@ export class Game {
         const onPointerDown = (e) => {
             if (this.mode !== 'play' || this.isLevelComplete) return;
             if (e.target.closest('#editor-panel') || e.target.closest('#hud-top')) return;
-            
+
             activePointerId = e.pointerId;
             isDragging = true;
             this.sound.init();
@@ -137,7 +138,7 @@ export class Game {
             const muted = this.sound.toggleMute();
             document.getElementById('sound-btn').innerHTML = muted ? "🔇 <span class='hide-mobile'>Muted</span>" : "🔊 <span class='hide-mobile'>Sound</span>";
         };
-        
+
         const musicFileInput = document.getElementById('music-file-input');
         document.getElementById('music-upload-btn').onclick = () => {
             musicFileInput.click();
@@ -283,7 +284,7 @@ export class Game {
     checkItemCollisions() {
         if (this.isLevelComplete) return;
         const pPos = this.player.pos;
-        
+
         // Hazard Hitbox: 1.1x larger
         const hazardRadius = this.player.hazardRadius;
 
@@ -340,8 +341,9 @@ export class Game {
             }
 
             if (window.keys) {
-                if (window.keys['ArrowLeft'] || window.keys['KeyA']) this.player.targetX -= 14.0 * delta;
-                if (window.keys['ArrowRight'] || window.keys['KeyD']) this.player.targetX += 14.0 * delta;
+                // Keyboard moves targetX at 40 blocks/sec; physics controller handles smooth travel
+                if (window.keys['ArrowLeft'] || window.keys['KeyA']) this.player.targetX -= 40.0 * delta;
+                if (window.keys['ArrowRight'] || window.keys['KeyD']) this.player.targetX += 40.0 * delta;
                 this.player.targetX = Math.max(-7.0, Math.min(7.0, this.player.targetX));
             }
 
