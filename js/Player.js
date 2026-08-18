@@ -8,7 +8,7 @@ export class Player {
 
         // Base Dimensions & Multipliers
         this.radius = 0.78;
-        this.hazardRadius = this.radius * 0.9;           // 0.9x radius for obstacle damage (0.702)
+        this.hazardRadius = this.radius * 0.75;           // 0.9x radius for obstacle damage (0.702)
         this.groundRadius = this.radius * 0.5;           // 0.5x radius for ground tile contact (0.39)
 
         this.pos = new THREE.Vector3(0, this.radius, 0);
