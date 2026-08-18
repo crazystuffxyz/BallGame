@@ -12,6 +12,7 @@ export class EditorController {
         this.currentRow = 0;
         this.isPainting = false;
         this.isHoveringUI = false;
+        this.lastPaintedKey = null;
 
         this.interactionMode = 'paint';
 
@@ -115,12 +116,12 @@ export class EditorController {
         document.getElementById('step-next-1').onclick = (e) => { e.stopPropagation(); this.scrollToRow(this.currentRow + 1); };
         document.getElementById('step-next-10').onclick = (e) => { e.stopPropagation(); this.scrollToRow(this.currentRow + 10); };
 
-        const playFn = () => this.game.startPlay(this.currentRow);
-        const playStartFn = () => this.game.startPlay(0);
-        document.getElementById('ed-play-btn').onclick = playFn;
-        document.getElementById('ed-play-start-btn').onclick = playStartFn;
-        document.getElementById('ed-play-btn-mob').onclick = playFn;
-        document.getElementById('ed-play-start-btn-mob').onclick = playStartFn;
+        // Play always starts from beginning (Row 0)
+        const playFromStart = () => this.game.startPlay(0);
+        document.getElementById('ed-play-btn').onclick = playFromStart;
+        document.getElementById('ed-play-start-btn').onclick = playFromStart;
+        document.getElementById('ed-play-btn-mob').onclick = playFromStart;
+        document.getElementById('ed-play-start-btn-mob').onclick = playFromStart;
 
         document.getElementById('preset-select').onchange = (e) => this.game.loadPreset(e.target.value);
         document.getElementById('theme-select').onchange = (e) => this.game.setTheme(e.target.value);
@@ -180,6 +181,31 @@ export class EditorController {
     initEvents() {
         const canvas = document.getElementById('game-canvas');
 
+        const updatePointerCoords = (clientX, clientY) => {
+            this.mouse.x = (clientX / window.innerWidth) * 2 - 1;
+            this.mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+            this.updateHover();
+        };
+
+        canvas.addEventListener('pointerdown', (e) => {
+            if (!this.active || this.isHoveringUI) return;
+
+            if (e.button === 2 || e.button === 1 || this.interactionMode === 'pan') {
+                this.isPanningTrack = true;
+                this.panStartY = e.clientY;
+                this.panStartRow = this.currentRow;
+                return;
+            }
+
+            if (e.button === 0 && this.interactionMode === 'paint') {
+                this.isPainting = true;
+                // Update raycast hover immediately so we never stamp the previous cell
+                updatePointerCoords(e.clientX, e.clientY);
+                this.lastPaintedKey = `${this.hoverRow},${this.hoverLane}`;
+                this.paintAtHover(false);
+            }
+        });
+
         canvas.addEventListener('pointermove', (e) => {
             if (!this.active) return;
 
@@ -195,34 +221,21 @@ export class EditorController {
                 return;
             }
 
-            this.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
-            this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
-            this.updateHover();
+            updatePointerCoords(e.clientX, e.clientY);
 
             if (this.isPainting) {
-                this.paintAtHover(e.buttons === 2);
-            }
-        });
-
-        canvas.addEventListener('pointerdown', (e) => {
-            if (!this.active || this.isHoveringUI) return;
-
-            if (e.button === 2 || e.button === 1 || this.interactionMode === 'pan') {
-                this.isPanningTrack = true;
-                this.panStartY = e.clientY;
-                this.panStartRow = this.currentRow;
-                return;
-            }
-
-            if (e.button === 0 && this.interactionMode === 'paint') {
-                this.isPainting = true;
-                this.paintAtHover(false);
+                const currentKey = `${this.hoverRow},${this.hoverLane}`;
+                if (currentKey !== this.lastPaintedKey) {
+                    this.lastPaintedKey = currentKey;
+                    this.paintAtHover(e.buttons === 2);
+                }
             }
         });
 
         window.addEventListener('pointerup', () => {
             this.isPainting = false;
             this.isPanningTrack = false;
+            this.lastPaintedKey = null;
         });
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -286,7 +299,7 @@ export class EditorController {
             if (lane >= -3 && lane <= 3 && row >= 0 && row < this.game.levelData.rows.length) {
                 this.hoverIndicator.visible = true;
                 this.hoverIndicator.position.set(lane * 2.0, 0, -row * 2.0);
-                this.hoverLane = lane + 3; // 7-lane index 0..6
+                this.hoverLane = lane + 3;
                 this.hoverRow = row;
                 this.updateTempoPreview();
                 return;
@@ -304,7 +317,6 @@ export class EditorController {
         if (!row.tileTempo) row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
 
         if (this.selectedCategory === 'tile') {
-            // Glass Custom Size Placement
             if (this.selectedVal === 4 && !isErase) {
                 const gw = parseInt(document.getElementById('glass-w-input')?.value || 1);
                 const gd = parseInt(document.getElementById('glass-d-input')?.value || 1);
