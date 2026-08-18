@@ -6,10 +6,10 @@ export class Player {
         this.scene = scene;
         this.sound = sound;
 
-        // Base Dimensions & Two Distinct Hitboxes
+        // Base Dimensions & Hitboxes
         this.radius = 0.78;
-        this.hazardRadius = this.radius * 1.4;           // 1.1x larger for obstacle damage (0.859)
-        this.groundRadius = this.hazardRadius * 0.25;    // 0.75x of hazard hitbox for tiles & diagonals (0.6435)
+        this.hazardRadius = this.radius * 1.1;           // 0.858 for obstacle collisions
+        this.groundRadius = this.radius * 0.85;          // 0.663 for solid ground contact
 
         this.pos = new THREE.Vector3(0, this.radius, 0);
         this.velY = 0;
@@ -19,18 +19,20 @@ export class Player {
         this.isDead = false;
         this.speedSqS = 11;
 
-        // Prevent tile effects from being applied every frame.
+        // Debounce lock for speed/tempo tiles
         this.lastTileEffectKey = null;
 
-        // Exponential-decay lateral velocity controller (no persistent acceleration state -> zero wobble)
+        // Lateral velocity controller
         this.targetX = 0;
-        this.velX = 0;   // lateral velocity in tiles/depth-unit
+        this.velX = 0;
 
-        // Grid-Locked Parabolic Jump Trajectory in Depth Space
+        // Physics-based Jump Pad state
         this.isPadJumping = false;
-        this.padLaunchRow = 0;
-        this.padJumpDistance = 4.0;
-        this.padJumpHeight = 3.2;
+        this.jumpStartZ = 0;
+        this.jumpTargetZ = 0;
+        this.jumpTotalDistance = 1.0;
+        this.jumpPeakHeight = 3.2;
+        this.jumpTargetRow = 0;
 
         this.mesh = this.createBallMesh();
         this.scene.add(this.mesh);
@@ -38,6 +40,7 @@ export class Player {
         this.shadow = this.createShadow();
         this.scene.add(this.shadow);
     }
+
     createBallMesh() {
         const group = new THREE.Group();
         const geo = new THREE.SphereGeometry(this.radius, 32, 32);
@@ -58,6 +61,7 @@ export class Player {
         group.add(this.sphereMesh);
         return group;
     }
+
     createShadow() {
         const geo = new THREE.CircleGeometry(this.groundRadius, 24);
         geo.rotateX(-Math.PI / 2);
@@ -68,6 +72,7 @@ export class Player {
         });
         return new THREE.Mesh(geo, mat);
     }
+
     reset(startRow = 0, baseTempo = 11) {
         const z = -startRow * 2.0;
         this.pos.set(0, this.radius, z);
@@ -79,16 +84,13 @@ export class Player {
         this.isPadJumping = false;
         this.isFallingIntoVoid = false;
         this.isDead = false;
-
         this.lastTileEffectKey = null;
 
         this.speedSqS = Math.max(
             2,
             Math.min(
                 40,
-                typeof baseTempo === 'number' && !isNaN(baseTempo)
-                    ? baseTempo
-                    : 11
+                typeof baseTempo === 'number' && !isNaN(baseTempo) ? baseTempo : 11
             )
         );
 
@@ -96,20 +98,29 @@ export class Player {
         this.shadow.visible = true;
         this.mesh.position.copy(this.pos);
     }
-    startPadJump(launchRow, distanceTiles = 4.0, height = 3.2) {
-        if (this.isFallingIntoVoid) return;
+
+    startPadJump(launchRow, jumpTileCount = 4, height = 3.2) {
+        if (this.isFallingIntoVoid || this.isDead) return;
+
         this.isPadJumping = true;
         this.isJumping = false;
         this.isGrounded = false;
-        this.padLaunchRow = launchRow;
-        this.padJumpDistance = distanceTiles;
-        this.padJumpHeight = height;
+
+        this.jumpTargetRow = launchRow + jumpTileCount;
+        this.jumpStartZ = this.pos.z;
+        // Target is locked to the exact half-depth (center) of the landing row
+        this.jumpTargetZ = -this.jumpTargetRow * 2.0;
+        this.jumpTotalDistance = Math.max(0.1, this.jumpStartZ - this.jumpTargetZ);
+        this.jumpPeakHeight = height;
+
         this.sound.playJump();
     }
+
     applyTempoTile(targetSqS) {
         this.speedSqS = Math.max(2, Math.min(40, targetSqS));
         this.sound.playSpeed();
     }
+
     update(delta, level) {
         if (this.isDead) return;
 
@@ -117,28 +128,20 @@ export class Player {
         const TILE_HALF = 1.0;
         const groundRadius = this.groundRadius;
 
-        // Forward motion along depth
-        const fwdDist = this.speedSqS * TILE_SIZE * delta;
-        this.pos.z -= fwdDist;
+        // 1. Forward Motion: STOP advancing along depth if falling into void
+        if (!this.isFallingIntoVoid) {
+            const fwdDist = this.speedSqS * TILE_SIZE * delta;
+            this.pos.z -= fwdDist;
+            this.sphereMesh.rotation.x -= fwdDist / this.radius;
+        }
 
-        // Depth units traversed this frame (dimensionless lateral controller currency)
+        // 2. Lateral Velocity Controller
         const deltaS = this.speedSqS * delta;
-
-        // --- Exponential-Decay Lateral Velocity Controller ---
-        // desiredVel = Kp * error (clamped to V_MAX) then velX decays toward desiredVel
-        // via 1st-order exponential filter. No acceleration state -> mathematically
-        // guaranteed zero-overshoot and zero-wobble after input stops.
-        //
-        // Constraint derivation (all in tile/depth units):
-        //   V_MAX = 5.0  -> max 5 tiles lateral per 1 tile forward (constraint #2/#3)
-        //   Kp = 1.0     -> at 1-tile error desiredVel = 1 (slow, smooth for small dist, constraint #1)
-        //                    at 5-tile error desiredVel = 5 = V_MAX
-        //   RESPONSE=30  -> velocity half-life = 0.023 depth units, tracks target almost instantly
         const V_MAX = 5.0;
         const Kp = 1.0;
         const RESPONSE = 30.0;
 
-        if (deltaS > 1e-6) {
+        if (deltaS > 1e-6 && !this.isFallingIntoVoid) {
             const subSteps = Math.max(1, Math.ceil(deltaS / 0.02));
             const ds = deltaS / subSteps;
             const alpha = 1.0 - Math.exp(-RESPONSE * ds);
@@ -148,32 +151,21 @@ export class Player {
 
             for (let i = 0; i < subSteps; i++) {
                 const err = tgtX - curX;
-
-                // Snap-to-target deadband: eliminates all micro-jitter when settled
                 if (Math.abs(err) < 0.0003 && Math.abs(this.velX) < 0.0003) {
                     this.velX = 0;
                     curX = tgtX;
                     break;
                 }
-
-                // Target lateral speed proportional to error, clamped to V_MAX
                 const desiredVel = Math.max(-V_MAX, Math.min(V_MAX, Kp * err));
-
-                // Exponential approach: v decays toward desiredVel each sub-step
-                // When target reached: desiredVel -> 0, velX -> 0 smoothly. No overshoot.
                 this.velX += (desiredVel - this.velX) * alpha;
-
                 curX += this.velX * ds;
             }
-
             this.pos.x = Math.max(-7.0, Math.min(7.0, curX * TILE_SIZE));
         }
 
-        this.sphereMesh.rotation.x -= fwdDist / this.radius;
-        // Visual banking tied to velocity; coefficient tuned so V_MAX -> ~11 degrees lean
         this.sphereMesh.rotation.z = -this.velX * 0.04;
 
-        // 7-Lane Collision Detection & Glass Slab Checking
+        // 3. Tile & Jump Pad Collision Detection
         let onSolidGround = false;
         let primaryTileType = 0;
         let closestDistSq = Infinity;
@@ -181,7 +173,7 @@ export class Player {
         let touchedCol = -1;
         let jumpPadCandidate = null;
 
-        // Glass Slabs: 1-Depth Safe Rule
+        // Glass Slabs Check
         for (let slab of level.glassSlabs) {
             const clampX = Math.max(slab.minX, Math.min(this.pos.x, slab.maxX));
             const clampZ = Math.max(slab.minZ, Math.min(this.pos.z, slab.maxZ));
@@ -194,14 +186,12 @@ export class Player {
                     slab.triggered = true;
                     slab.entryZ = this.pos.z;
                 }
-
                 if (slab.entryZ !== null) {
                     const depthTraveledOnSlab = Math.abs(this.pos.z - slab.entryZ);
                     if (depthTraveledOnSlab > (TILE_SIZE + groundRadius * 0.5)) {
                         slab.isSolid = false;
                     }
                 }
-
                 if (slab.isSolid) {
                     onSolidGround = true;
                     if (distSq < closestDistSq) {
@@ -214,13 +204,13 @@ export class Player {
             }
         }
 
-        // Regular Grid Tiles
+        // Regular Grid Tiles & Jump Pad Detection
         if (level.levelData && level.levelData.rows && level.levelData.rows.length > 0) {
             const rowsLen = level.levelData.rows.length;
-            const rMin = Math.max(0, Math.floor((-this.pos.z - groundRadius + TILE_HALF) / TILE_SIZE));
-            const rMax = Math.min(rowsLen - 1, Math.floor((-this.pos.z + groundRadius + TILE_HALF) / TILE_SIZE));
-            const cMin = Math.max(0, Math.floor((this.pos.x - groundRadius + 7.0) / TILE_SIZE));
-            const cMax = Math.min(6, Math.floor((this.pos.x + groundRadius + 7.0) / TILE_SIZE));
+            const rMin = Math.max(0, Math.floor((-this.pos.z - this.radius + TILE_HALF) / TILE_SIZE));
+            const rMax = Math.min(rowsLen - 1, Math.floor((-this.pos.z + this.radius + TILE_HALF) / TILE_SIZE));
+            const cMin = Math.max(0, Math.floor((this.pos.x - this.radius + 7.0) / TILE_SIZE));
+            const cMax = Math.min(6, Math.floor((this.pos.x + this.radius + 7.0) / TILE_SIZE));
 
             for (let r = rMin; r <= rMax; r++) {
                 const row = level.levelData.rows[r];
@@ -243,16 +233,24 @@ export class Player {
                     const dz = this.pos.z - clampZ;
                     const distSq = dx * dx + dz * dz;
 
+                    // Touching ANY part of a Jump Pad triggers it immediately
+                    if (tileType === 2 || tileType === 3) {
+                        const touchMargin = this.radius * 0.9;
+                        if (
+                            this.pos.x >= minX - touchMargin &&
+                            this.pos.x <= maxX + touchMargin &&
+                            this.pos.z <= maxZ + touchMargin &&
+                            this.pos.z >= minZ - touchMargin
+                        ) {
+                            jumpPadCandidate = { type: tileType, row: r, col: c };
+                            onSolidGround = true;
+                        }
+                    }
+
                     if (distSq <= groundRadius * groundRadius) {
-                        let tileIsSolid = (tileType !== 7 || level.fadeOpacity > 0.4);
+                        const tileIsSolid = (tileType !== 7 || level.fadeOpacity > 0.4);
                         if (tileIsSolid) {
                             onSolidGround = true;
-
-                            // ALWAYS prioritize Jump Pad (2) and Big Jump (3) so they never get swallowed
-                            if (tileType === 2 || tileType === 3) {
-                                jumpPadCandidate = { type: tileType, row: r, col: c };
-                            }
-
                             if (distSq < closestDistSq) {
                                 closestDistSq = distSq;
                                 primaryTileType = tileType;
@@ -273,7 +271,7 @@ export class Player {
             }
         }
 
-        // Guaranteed Jump Pad Trigger Priority
+        // Prioritize jump pad if one was touched
         if (jumpPadCandidate) {
             primaryTileType = jumpPadCandidate.type;
             touchedRow = jumpPadCandidate.row;
@@ -286,55 +284,51 @@ export class Player {
                 return;
             }
 
+            // Normal Jump = 4 tiles forward, Big Jump = 8 tiles forward
+            if (type === 2) {
+                this.startPadJump(r, 4, 3.2);
+                return;
+            }
+            if (type === 3) {
+                this.startPadJump(r, 8, 4.8);
+                return;
+            }
+
             const effectKey = `${r}:${c}:${type}`;
-
-            // Do not repeatedly apply an effect while standing on the same tile.
             if (this.lastTileEffectKey === effectKey) return;
-
             this.lastTileEffectKey = effectKey;
 
-            if (type === 2) {
-                this.startPadJump(r, 4.0, 3.2);
-            } else if (type === 3) {
-                this.startPadJump(r, 8.0, 4.8);
-            } else if (type === 5) {
-                this.speedSqS = Math.max(
-                    2,
-                    Math.min(40, this.speedSqS * 1.45)
-                );
+            if (type === 5) {
+                this.speedSqS = Math.max(2, Math.min(40, this.speedSqS * 1.45));
                 this.sound.playSpeed();
             } else if (type === 6) {
-                this.speedSqS = Math.max(
-                    2,
-                    Math.min(40, this.speedSqS * 0.85)
-                );
+                this.speedSqS = Math.max(2, Math.min(40, this.speedSqS * 0.85));
                 this.sound.playSpeed();
             } else if (type === 8) {
                 const row = level.levelData.rows[r];
-                const target =
-                    row?.tileTempo?.[c] ||
-                    level.levelData.baseTempo ||
-                    11;
-
+                const target = row?.tileTempo?.[c] || level.levelData.baseTempo || 11;
                 this.applyTempoTile(target);
             }
         };
 
-        // --- Grid-Locked Parabolic Trajectory in Depth Space ---
+        // 4. Parabolic Jump Trajectory in Depth Space
         if (this.isPadJumping) {
-            const currentS = -this.pos.z / 2.0;
-            const progress = (currentS - this.padLaunchRow) / this.padJumpDistance;
+            const distanceTraveled = this.jumpStartZ - this.pos.z;
+            const progress = Math.max(0, Math.min(1.0, distanceTraveled / this.jumpTotalDistance));
 
             if (progress >= 1.0) {
+                // Land exactly at the center depth of the target row
+                this.pos.z = this.jumpTargetZ;
                 this.pos.y = this.radius;
-                this.isPadJumping = false;
                 this.velY = 0;
+                this.isPadJumping = false;
 
-                const landRow = Math.round(this.padLaunchRow + this.padJumpDistance);
+                const landRow = this.jumpTargetRow;
                 const landCol = Math.max(0, Math.min(6, Math.round((this.pos.x + 7.0) / 2.0)));
                 const rowData = level.levelData.rows[landRow];
-                const landType = (rowData && rowData.tiles) ? rowData.tiles[landCol] : 0;
+                const landType = rowData?.tiles ? rowData.tiles[landCol] : 0;
 
+                // If landed on another jump pad, trigger the chain jump immediately
                 if (landType === 2 || landType === 3) {
                     this.isGrounded = true;
                     applyTileEffects(landType, landRow, landCol);
@@ -349,7 +343,8 @@ export class Player {
                     this.lastTileEffectKey = null;
                 }
             } else {
-                const arcY = 4.0 * this.padJumpHeight * progress * (1.0 - progress);
+                // Smooth, continuous parabolic curve: 4 * H * p * (1 - p)
+                const arcY = 4.0 * this.jumpPeakHeight * progress * (1.0 - progress);
                 this.pos.y = this.radius + Math.max(0, arcY);
             }
         } else if (this.isFallingIntoVoid) {
@@ -361,13 +356,13 @@ export class Player {
             this.isGrounded = false;
             this.lastTileEffectKey = null;
         } else {
-            // Rolling on solid ground
             this.pos.y = this.radius;
             this.velY = 0;
             this.isGrounded = true;
             applyTileEffects(primaryTileType, touchedRow, touchedCol);
         }
 
+        // Void Fall Death Check
         if (this.pos.y < -3.5) {
             this.crash("fall");
         }
@@ -378,6 +373,7 @@ export class Player {
         this.shadow.scale.set(shadowScale, shadowScale, shadowScale);
         this.shadow.visible = !this.isFallingIntoVoid && this.pos.y > -1.0;
     }
+
     crash(reason = "obstacle") {
         if (this.isDead) return;
         this.isDead = true;
