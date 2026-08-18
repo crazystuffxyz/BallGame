@@ -1,3 +1,4 @@
+// js/Storage.js
 export const Storage = {
     KEY: 'rs_custom_level_v3',
     save(data) {
