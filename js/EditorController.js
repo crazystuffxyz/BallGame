@@ -1,3 +1,4 @@
+// js/EditorController.js
 import * as THREE from 'three';
 import { computeEffectiveTempoBefore, tempoDirection, normalizeLevelData } from './Constants.js';
 import { Storage } from './Storage.js';
@@ -272,13 +273,29 @@ export class EditorController {
         }
     }
     scrollToRow(r) {
-        const maxRow = this.game.levelData.rows.length - 1;
-        this.currentRow = Math.max(0, Math.min(maxRow, r));
-        document.getElementById('row-slider').value = this.currentRow;
-        document.getElementById('row-display').innerText = `Row: ${this.currentRow}/${maxRow}`;
+        const rows = this.game.levelData?.rows || [];
+        const maxRow = Math.max(0, rows.length - 1);
+
+        this.currentRow = Math.max(
+            0,
+            Math.min(maxRow, Number(r) || 0)
+        );
+
+        const slider = document.getElementById('row-slider');
+        const display = document.getElementById('row-display');
+
+        if (slider) {
+            slider.value = String(this.currentRow);
+        }
+
+        if (display) {
+            display.innerText = `Row: ${this.currentRow}/${maxRow}`;
+        }
+
         this.updateTempoPreview();
 
         const z = -this.currentRow * 2.0;
+
         this.game.camera.position.set(0, 8.0, z + 5.5);
         this.game.camera.lookAt(0, 0, z - 2.5);
     }
@@ -435,10 +452,27 @@ export class EditorController {
         }
     }
     updateScrubber() {
-        const maxRow = this.game.levelData.rows.length - 1;
+        const rows = this.game.levelData?.rows || [];
+        const maxRow = Math.max(0, rows.length - 1);
+
+        this.currentRow = Math.max(
+            0,
+            Math.min(this.currentRow, maxRow)
+        );
+
         const slider = document.getElementById('row-slider');
-        slider.max = maxRow;
-        document.getElementById('row-display').innerText = `Row: ${this.currentRow}/${maxRow}`;
+
+        if (slider) {
+            slider.min = '0';
+            slider.max = String(maxRow);
+            slider.value = String(this.currentRow);
+        }
+
+        const display = document.getElementById('row-display');
+
+        if (display) {
+            display.innerText = `Row: ${this.currentRow}/${maxRow}`;
+        }
     }
     syncTopbarFields() {
         const baseTempoInput = document.getElementById('base-tempo-input');
@@ -457,9 +491,20 @@ export class EditorController {
         textarea.value = JSON.stringify(this.game.levelData, null, 2);
         modal.classList.add('active');
 
-        document.getElementById('json-copy-btn').onclick = () => {
-            navigator.clipboard.writeText(textarea.value);
-            alert("JSON copied to clipboard!");
+        document.getElementById('json-copy-btn').onclick = async () => {
+            try {
+                if (navigator.clipboard?.writeText) {
+                    await navigator.clipboard.writeText(textarea.value);
+                } else {
+                    textarea.select();
+                    document.execCommand('copy');
+                    textarea.setSelectionRange(0, 0);
+                }
+
+                alert('JSON copied to clipboard!');
+            } catch (error) {
+                alert('Unable to copy automatically. Please copy the text manually.');
+            }
         };
         document.getElementById('json-load-btn').onclick = () => {
             try {
