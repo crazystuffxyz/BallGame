@@ -13,7 +13,7 @@ export class Player {
         this.isDead = false;
         this.speedSqS = 11;
 
-        // Kinematics in Depth Space
+        // Smooth, Weighty Kinematics in Depth Space
         this.targetX = 0;
         this.velX = 0;   // width/depth
         this.accelX = 0; // width/depth^2
@@ -21,7 +21,7 @@ export class Player {
         // Grid-Locked Parabolic Jump Trajectory in Depth Space
         this.isPadJumping = false;
         this.padLaunchRow = 0;
-        this.padJumpDistance = 4.0; // In tiles (4 for jump pad, 8 for big jump pad)
+        this.padJumpDistance = 4.0;
         this.padJumpHeight = 3.2;
 
         this.mesh = this.createBallMesh();
@@ -105,11 +105,12 @@ export class Player {
         // Total depth in tile units traversed this frame
         const deltaS = this.speedSqS * delta;
 
-        // --- Balanced Kinematic S-Curve Lateral Controller ---
-        const V_MAX = 5.0;    // Max speed (width/depth)
-        const A_MAX = 30.0;   // Balanced max acceleration (width/depth^2)
-        const J_MAX = 300.0;  // Balanced max jerk (width/depth^3)
-        const TAU_A = A_MAX / J_MAX; // 0.1 depth unit acceleration time constant
+        // --- Smooth, Weighty Kinematic S-Curve Controller ---
+        // Bounded acceleration and jerk prevent violent jumps or teleporting on mobile
+        const V_MAX = 4.5;    // Max speed (width/depth)
+        const A_MAX = 18.0;   // Controlled max acceleration (width/depth^2)
+        const J_MAX = 150.0;  // Smooth max jerk (width/depth^3)
+        const TAU_A = A_MAX / J_MAX; // 0.12 depth units time constant
 
         if (deltaS > 0.000001) {
             const maxSubStep = 0.005;
@@ -122,7 +123,7 @@ export class Player {
             for (let i = 0; i < subSteps; i++) {
                 const deltaX = targetTileX - currentTileX;
 
-                // Optimal stopping velocity profile in depth space
+                // Optimal depth-space braking speed profile
                 const stoppingSpeed = Math.sqrt(2.0 * A_MAX * Math.abs(deltaX));
                 const desiredVel = Math.sign(deltaX) * Math.min(V_MAX, stoppingSpeed);
 
@@ -147,7 +148,7 @@ export class Player {
         }
 
         this.sphereMesh.rotation.x -= fwdDist / this.radius;
-        this.sphereMesh.rotation.z = -this.velX * 0.08 - this.accelX * 0.003;
+        this.sphereMesh.rotation.z = -this.velX * 0.08 - this.accelX * 0.002;
 
         // 7-Lane Collision Detection & Glass Slab Checking
         let onSolidGround = false;
@@ -170,7 +171,6 @@ export class Player {
                     slab.entryZ = this.pos.z;
                 }
 
-                // If moving past 1 depth unit (2.0 units) from entry, the slab falls
                 if (slab.entryZ !== null) {
                     const depthTraveledOnSlab = Math.abs(this.pos.z - slab.entryZ);
                     if (depthTraveledOnSlab > (TILE_SIZE + shadowRadius * 0.5)) {
@@ -266,7 +266,6 @@ export class Player {
             const progress = (currentS - this.padLaunchRow) / this.padJumpDistance;
 
             if (progress >= 1.0) {
-                // Land exactly on target row with zero drift
                 this.pos.y = this.radius;
                 this.isPadJumping = false;
                 this.velY = 0;
@@ -286,7 +285,6 @@ export class Player {
                     this.isFallingIntoVoid = true;
                 }
             } else {
-                // Parabola: y(u) = radius + 4 * H * u * (1 - u)
                 const arcY = 4.0 * this.padJumpHeight * progress * (1.0 - progress);
                 this.pos.y = this.radius + Math.max(0, arcY);
             }
