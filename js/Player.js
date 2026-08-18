@@ -7,9 +7,9 @@ export class Player {
         this.sound = sound;
 
         // Base Dimensions & Two Distinct Hitboxes
-        this.radius = 0.78;
+        this.radius = 0.78*0.25;
         this.hazardRadius = this.radius * 1.2;           // 1.1x larger for obstacle damage (0.859)
-        this.groundRadius = this.hazardRadius * 0.25;    // 0.75x of hazard hitbox for tiles & diagonals (0.6435)
+        this.groundRadius = this.hazardRadius;    // 0.75x of hazard hitbox for tiles & diagonals (0.6435)
 
         this.pos = new THREE.Vector3(0, this.radius, 0);
         this.velY = 0;
