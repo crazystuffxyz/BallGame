@@ -63,6 +63,34 @@ export const TextureGen = {
         ctx.stroke();
         return new THREE.CanvasTexture(cv);
     },
+    createBgChangerTexture(color = '#ff0077') {
+        const cv = document.createElement('canvas');
+        cv.width = 128; cv.height = 128;
+        const ctx = cv.getContext('2d');
+        ctx.fillStyle = '#111828';
+        ctx.fillRect(0, 0, 128, 128);
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = color;
+        ctx.strokeRect(4, 4, 120, 120);
+
+        // Glowing center portal ring
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(64, 64, 38, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(64, 64, 24, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.font = 'bold 20px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#111828';
+        ctx.fillText('🎨', 64, 71);
+
+        return new THREE.CanvasTexture(cv);
+    },
     createSkyTexture(theme = 'sky') {
         const cv = document.createElement('canvas');
         cv.width = 512; cv.height = 512;
@@ -98,6 +126,32 @@ export const TextureGen = {
                 ctx.arc(x, y, r, 0, Math.PI * 2);
                 ctx.fill();
             }
+        }
+        return new THREE.CanvasTexture(cv);
+    },
+    createSkyTextureFromColor(hexColor = '#ff0077') {
+        const cv = document.createElement('canvas');
+        cv.width = 512; cv.height = 512;
+        const ctx = cv.getContext('2d');
+        const color = new THREE.Color(hexColor);
+        const darkColor = color.clone().multiplyScalar(0.2);
+
+        const grad = ctx.createLinearGradient(0, 0, 0, 512);
+        grad.addColorStop(0, `#${darkColor.getHexString()}`);
+        grad.addColorStop(0.7, `#${color.getHexString()}`);
+        grad.addColorStop(1, '#ffffff');
+
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 512, 512);
+
+        ctx.fillStyle = '#ffffff';
+        for (let i = 0; i < 120; i++) {
+            const x = Math.random() * 512;
+            const y = Math.random() * 512;
+            const r = Math.random() * 1.4;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
         }
         return new THREE.CanvasTexture(cv);
     },
