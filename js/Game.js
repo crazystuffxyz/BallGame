@@ -283,14 +283,16 @@ export class Game {
     checkItemCollisions() {
         if (this.isLevelComplete) return;
         const pPos = this.player.pos;
-        const rOffset = this.player.radius - 0.6; 
+        
+        // Hazard Hitbox: 1.1x larger
+        const hazardRadius = this.player.hazardRadius;
 
         for (let child of this.level.obstacleGroup.children) {
             if (child.userData && !child.userData.collected) {
                 const dx = pPos.x - child.position.x;
                 const dz = pPos.z - child.position.z;
                 const dist2D = Math.sqrt(dx * dx + dz * dz);
-                const hitRadius = child.userData.hitRadius + rOffset;
+                const hitRadius = child.userData.hitRadius + (hazardRadius - 0.78);
 
                 if (child.userData.isItem) {
                     const dist3D = child.position.distanceTo(pPos);
