@@ -65,7 +65,7 @@
                     <button id="ed-play-start-btn-mob" class="hud-btn">⏮️ Start</button>
                 </div>
 
-                <div class="editor-group" style="flex:1; justify-content:center; gap:4px;">
+                <div class="editor-group" style="flex:1; justify-content:center; gap:4px; flex-wrap:wrap;">
                     <label class="hide-mobile" style="font-size: 11px; font-weight: bold;">Level:</label>
                     <select id="preset-select" class="editor-select">
                         <option value="preset_cloud">Cloud Meadows</option>
@@ -82,6 +82,10 @@
                     </select>
                     <label class="hide-mobile" style="font-size: 11px; font-weight: bold; margin-left: 4px;" title="Custom Background Color">🎨 BG:</label>
                     <input type="color" id="level-bg-picker" value="#5fa8ff" class="editor-input color-picker-input" title="Level Custom Background RGB">
+                    <label class="hide-mobile" style="font-size: 11px; font-weight: bold; margin-left: 4px;" title="Tile Fill Color">🟦 Fill:</label>
+                    <input type="color" id="tile-fill-picker" value="#3a88fe" class="editor-input color-picker-input" title="Tile Fill Color">
+                    <label class="hide-mobile" style="font-size: 11px; font-weight: bold; margin-left: 4px;" title="Tile Border Color">🔲 Border:</label>
+                    <input type="color" id="tile-border-picker" value="#00f2ff" class="editor-input color-picker-input" title="Tile Border Color">
                     <label class="hide-mobile" style="font-size: 11px; font-weight: bold; margin-left: 4px;" title="Starting speed">Tempo:</label>
                     <input type="number" id="base-tempo-input" class="editor-input" min="2" max="40" step="0.5" value="11" style="width:50px;">
                 </div>
@@ -191,7 +195,7 @@
                 <div class="editor-group bottom-controls">
                     <button id="ed-mode-toggle" class="hud-btn primary" style="padding: 6px 12px; margin-right: 8px;">🖌️ Paint Mode</button>
                     <span class="hint-text" style="font-size: 11px; color:#aaa; flex-grow:1;">
-                        <span class="hide-mobile">Right-Click to Erase | Right-Drag to Pan | </span>Drag to paint/pan
+                        <span class="hide-mobile">Right-Click/Drag to Pan | </span>Left-Click to Paint | Middle-Click to Erase
                     </span>
                 </div>
             </div>
