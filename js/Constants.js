@@ -82,6 +82,16 @@ export function normalizeLevelData(data) {
 
     normalized.baseTempo = Math.max(2, Math.min(40, normalized.baseTempo));
 
+    if (typeof data.tileMainColor === 'string' && data.tileMainColor) {
+        normalized.tileMainColor = data.tileMainColor;
+    }
+    if (typeof data.tileBorderColor === 'string' && data.tileBorderColor) {
+        normalized.tileBorderColor = data.tileBorderColor;
+    }
+    if (typeof data.customBgColor === 'string' && data.customBgColor) {
+        normalized.customBgColor = data.customBgColor;
+    }
+
     const normalizeArray = (arr, defaultValue = 0) => {
         if (!Array.isArray(arr)) return [defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue, defaultValue];
         if (arr.length === 5) {
