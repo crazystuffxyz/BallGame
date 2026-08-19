@@ -7,12 +7,13 @@ export class SoundEngine {
         this.step = 0;
         this.bpm = 135;
         this.isPlayingMusic = false;
-        
-        // Custom Audio Player
+
         this.customAudio = new Audio();
         this.customAudio.loop = true;
+        this.customAudio.volume = 0.8;
         this.hasCustomAudio = false;
     }
+
     init() {
         if (!this.ctx) {
             const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -22,16 +23,27 @@ export class SoundEngine {
             this.ctx.resume();
         }
     }
+
     setCustomAudioFile(file) {
         if (!file) return;
+        // Revoke previous object URL if any to free memory
+        if (this.customAudio.src && this.customAudio.src.startsWith('blob:')) {
+            URL.revokeObjectURL(this.customAudio.src);
+        }
         const url = URL.createObjectURL(file);
         this.customAudio.src = url;
+        this.customAudio.load();
         this.hasCustomAudio = true;
-        if (this.isPlayingMusic && !this.muted) {
-            this.stopSynthMusic();
+
+        // Stop synth, switch to custom audio immediately
+        const wasPlaying = this.isPlayingMusic;
+        this.stopSynthMusic();
+        if (wasPlaying && !this.muted) {
+            this.customAudio.currentTime = 0;
             this.customAudio.play().catch(() => {});
         }
     }
+
     toggleMute() {
         this.muted = !this.muted;
         if (this.muted) {
@@ -41,6 +53,7 @@ export class SoundEngine {
         }
         return this.muted;
     }
+
     playTone(freq, type = 'sine', duration = 0.15, gainVal = 0.2) {
         if (this.muted || !this.ctx) return;
         try {
@@ -56,6 +69,7 @@ export class SoundEngine {
             osc.stop(this.ctx.currentTime + duration);
         } catch(e){}
     }
+
     playJump() {
         if (this.muted || !this.ctx) return;
         try {
@@ -72,6 +86,7 @@ export class SoundEngine {
             osc.stop(this.ctx.currentTime + 0.26);
         } catch(e){}
     }
+
     playGem() {
         if (this.muted || !this.ctx) return;
         const now = this.ctx.currentTime;
@@ -88,6 +103,7 @@ export class SoundEngine {
             osc.stop(now + i * 0.05 + 0.21);
         });
     }
+
     playCrown() {
         if (this.muted || !this.ctx) return;
         const notes = [523.25, 659.25, 783.99, 1046.50];
@@ -105,6 +121,7 @@ export class SoundEngine {
             osc.stop(now + i * 0.07 + 0.41);
         });
     }
+
     playCrash() {
         if (this.muted || !this.ctx) return;
         try {
@@ -129,6 +146,7 @@ export class SoundEngine {
             noise.start();
         } catch(e){}
     }
+
     playSpeed() {
         if (this.muted || !this.ctx) return;
         try {
@@ -145,12 +163,18 @@ export class SoundEngine {
             osc.stop(this.ctx.currentTime + 0.21);
         } catch(e){}
     }
+
     startMusic() {
         if (this.muted) return;
 
         this.init();
 
         if (this.isPlayingMusic) {
+            // If custom audio is loaded but not playing, start it
+            if (this.hasCustomAudio && this.customAudio.paused) {
+                this.customAudio.currentTime = 0;
+                this.customAudio.play().catch(() => {});
+            }
             return;
         }
 
@@ -164,6 +188,7 @@ export class SoundEngine {
 
         this.startSynthMusic();
     }
+
     startSynthMusic() {
         this.stopSynthMusic();
         this.step = 0;
@@ -190,12 +215,14 @@ export class SoundEngine {
             this.step = (this.step + 1) % 32;
         }, interval);
     }
+
     stopSynthMusic() {
         if (this.musicTimer) {
             clearInterval(this.musicTimer);
             this.musicTimer = null;
         }
     }
+
     stopMusic() {
         this.isPlayingMusic = false;
         this.stopSynthMusic();
