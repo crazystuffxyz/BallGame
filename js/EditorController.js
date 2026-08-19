@@ -148,6 +148,22 @@ export class EditorController {
             });
         }
 
+        const tileFillPicker = document.getElementById('tile-fill-picker');
+        if (tileFillPicker) {
+            tileFillPicker.addEventListener('input', (e) => {
+                this.game.level.applyCustomTileColors(e.target.value, null);
+                this.game.level.rebuildMeshes();
+            });
+        }
+
+        const tileBorderPicker = document.getElementById('tile-border-picker');
+        if (tileBorderPicker) {
+            tileBorderPicker.addEventListener('input', (e) => {
+                this.game.level.applyCustomTileColors(null, e.target.value);
+                this.game.level.rebuildMeshes();
+            });
+        }
+
         document.getElementById('ed-save-btn').onclick = () => this.save();
         document.getElementById('ed-json-btn').onclick = () => this.openJsonModal();
         document.getElementById('ed-clear-btn').onclick = () => this.clearAll();
@@ -199,6 +215,7 @@ export class EditorController {
         window.addEventListener('pointerdown', (e) => {
             if (!this.active || this.isEventOnUI(e)) return;
 
+            // Right-click or middle-click or pan mode = pan the track
             if (e.button === 2 || e.button === 1 || this.interactionMode === 'pan') {
                 this.isPanningTrack = true;
                 this.panStartY = e.clientY;
@@ -211,6 +228,7 @@ export class EditorController {
                 updatePointerCoords(e.clientX, e.clientY);
                 if (this.hoverRow !== null && this.hoverLane !== null) {
                     this.lastPaintedKey = `${this.hoverRow},${this.hoverLane}`;
+                    // Middle mouse / e.buttons check won't work here, use selectedVal for erase
                     this.paintAtHover(false);
                 }
             }
@@ -237,7 +255,7 @@ export class EditorController {
                 const currentKey = `${this.hoverRow},${this.hoverLane}`;
                 if (currentKey !== this.lastPaintedKey) {
                     this.lastPaintedKey = currentKey;
-                    this.paintAtHover(e.buttons === 2);
+                    this.paintAtHover(false);
                 }
             }
         });
@@ -311,9 +329,9 @@ export class EditorController {
         this.raycaster.setFromCamera(this.mouse, this.game.camera);
         const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
         const target = new THREE.Vector3();
-        this.raycaster.ray.intersectPlane(plane, target);
+        const hit = this.raycaster.ray.intersectPlane(plane, target);
 
-        if (target) {
+        if (hit) {
             const lane = Math.round(target.x / 2.0);
             const row = Math.round(-target.z / 2.0);
 
@@ -333,7 +351,9 @@ export class EditorController {
 
     paintAtHover(isErase = false) {
         if (this.hoverLane === null || this.hoverRow === null) return;
-        const row = this.game.levelData.rows[this.hoverRow];
+        // Always work on the level manager's levelData (single source of truth)
+        const levelRows = this.game.level.levelData.rows;
+        const row = levelRows[this.hoverRow];
         if (!row) return;
         if (!row.obstacles) row.obstacles = [0, 0, 0, 0, 0, 0, 0];
         if (!row.tileTempo) row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
@@ -345,8 +365,9 @@ export class EditorController {
                 const gd = parseInt(document.getElementById('glass-d-input')?.value || 1);
                 for (let dr = 0; dr < gd; dr++) {
                     const r = this.hoverRow + dr;
-                    if (r >= this.game.levelData.rows.length) break;
-                    const targetRow = this.game.levelData.rows[r];
+                    if (r >= levelRows.length) break;
+                    const targetRow = levelRows[r];
+                    if (!targetRow.tileTempo) targetRow.tileTempo = [0, 0, 0, 0, 0, 0, 0];
                     for (let dc = 0; dc < gw; dc++) {
                         const c = this.hoverLane + dc;
                         if (c >= 7) break;
@@ -376,7 +397,8 @@ export class EditorController {
 
     deleteAtHover() {
         if (this.hoverLane === null || this.hoverRow === null) return;
-        const row = this.game.levelData.rows[this.hoverRow];
+        const levelRows = this.game.level.levelData.rows;
+        const row = levelRows[this.hoverRow];
         if (!row) return;
         row.tiles[this.hoverLane] = 0;
         if (!row.obstacles) row.obstacles = [0, 0, 0, 0, 0, 0, 0];
@@ -421,7 +443,8 @@ export class EditorController {
     }
 
     fillCurrentRow() {
-        const row = this.game.levelData.rows[this.currentRow];
+        const levelRows = this.game.level.levelData.rows;
+        const row = levelRows[this.currentRow];
         if (row) {
             row.tiles = [1, 1, 1, 1, 1, 1, 1];
             row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
@@ -431,7 +454,8 @@ export class EditorController {
     }
 
     clearCurrentRow() {
-        const row = this.game.levelData.rows[this.currentRow];
+        const levelRows = this.game.level.levelData.rows;
+        const row = levelRows[this.currentRow];
         if (row) {
             row.tiles = [0, 0, 0, 0, 0, 0, 0];
             row.obstacles = [0, 0, 0, 0, 0, 0, 0];
@@ -443,10 +467,11 @@ export class EditorController {
     }
 
     duplicateRowAhead() {
-        const cur = this.game.levelData.rows[this.currentRow];
+        const levelRows = this.game.level.levelData.rows;
+        const cur = levelRows[this.currentRow];
         const nextRow = this.currentRow + 1;
-        if (cur && nextRow < this.game.levelData.rows.length) {
-            this.game.levelData.rows[nextRow] = JSON.parse(JSON.stringify(cur));
+        if (cur && nextRow < levelRows.length) {
+            levelRows[nextRow] = JSON.parse(JSON.stringify(cur));
             this.game.level.rebuildMeshes();
             this.game.countCollectibles();
             this.scrollToRow(nextRow);
@@ -454,8 +479,9 @@ export class EditorController {
     }
 
     add10Rows() {
+        const levelRows = this.game.level.levelData.rows;
         for (let i = 0; i < 10; i++) {
-            this.game.levelData.rows.push({
+            levelRows.push({
                 tiles: [1, 1, 1, 1, 1, 1, 1],
                 obstacles: [0, 0, 0, 0, 0, 0, 0],
                 tileTempo: [0, 0, 0, 0, 0, 0, 0],
@@ -468,7 +494,7 @@ export class EditorController {
 
     clearAll() {
         if (confirm("Clear all tiles and obstacles in this level?")) {
-            for (let r of this.game.levelData.rows) {
+            for (let r of this.game.level.levelData.rows) {
                 r.tiles = [0, 0, 0, 0, 0, 0, 0];
                 r.obstacles = [0, 0, 0, 0, 0, 0, 0];
                 r.tileTempo = [0, 0, 0, 0, 0, 0, 0];
@@ -507,18 +533,26 @@ export class EditorController {
         if (levelBgPicker && this.game.levelData?.customBgColor) {
             levelBgPicker.value = this.game.levelData.customBgColor;
         }
+        const tileFillPicker = document.getElementById('tile-fill-picker');
+        if (tileFillPicker && this.game.levelData?.tileMainColor) {
+            tileFillPicker.value = this.game.levelData.tileMainColor;
+        }
+        const tileBorderPicker = document.getElementById('tile-border-picker');
+        if (tileBorderPicker && this.game.levelData?.tileBorderColor) {
+            tileBorderPicker.value = this.game.levelData.tileBorderColor;
+        }
         this.updateTempoPreview();
     }
 
     save() {
-        Storage.save(this.game.levelData);
+        Storage.save(this.game.level.levelData);
         alert("Level saved successfully to browser storage!");
     }
 
     openJsonModal() {
         const modal = document.getElementById('json-modal');
         const textarea = document.getElementById('json-textarea');
-        textarea.value = JSON.stringify(this.game.levelData, null, 2);
+        textarea.value = JSON.stringify(this.game.level.levelData, null, 2);
         modal.classList.add('active');
 
         document.getElementById('json-copy-btn').onclick = async () => {
@@ -540,8 +574,9 @@ export class EditorController {
             try {
                 const parsed = JSON.parse(textarea.value);
                 if (parsed && Array.isArray(parsed.rows)) {
-                    this.game.levelData = normalizeLevelData(parsed);
-                    this.game.level.loadLevel(this.game.levelData);
+                    this.game.level.loadLevel(parsed);
+                    // Sync single source of truth
+                    this.game.levelData = this.game.level.levelData;
                     this.updateScrubber();
                     this.syncTopbarFields();
                     this.game.countCollectibles();
