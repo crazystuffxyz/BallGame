@@ -11,7 +11,16 @@ export class SoundEngine {
         this.customAudio = new Audio();
         this.customAudio.loop = true;
         this.customAudio.volume = 0.8;
-        this.hasCustomAudio = false;
+        this.hasCustomAudio = true;
+
+        // Load default.mp3 from the static server as the default background track
+        this.customAudio.src = 'default.mp3';
+        this.customAudio.load();
+
+        // If default.mp3 fails to load, fall back to the synth
+        this.customAudio.onerror = () => {
+            this.hasCustomAudio = false;
+        };
     }
 
     init() {
@@ -26,18 +35,18 @@ export class SoundEngine {
 
     setCustomAudioFile(file) {
         if (!file) return;
-        // Revoke previous object URL if any to free memory
         if (this.customAudio.src && this.customAudio.src.startsWith('blob:')) {
             URL.revokeObjectURL(this.customAudio.src);
+        }
+        const wasPlaying = this.isPlayingMusic;
+        this.stopSynthMusic();
+        if (wasPlaying) {
+            this.customAudio.pause();
         }
         const url = URL.createObjectURL(file);
         this.customAudio.src = url;
         this.customAudio.load();
         this.hasCustomAudio = true;
-
-        // Stop synth, switch to custom audio immediately
-        const wasPlaying = this.isPlayingMusic;
-        this.stopSynthMusic();
         if (wasPlaying && !this.muted) {
             this.customAudio.currentTime = 0;
             this.customAudio.play().catch(() => {});
@@ -47,9 +56,13 @@ export class SoundEngine {
     toggleMute() {
         this.muted = !this.muted;
         if (this.muted) {
-            this.stopMusic();
-        } else if (window.game && window.game.mode === 'play') {
-            this.startMusic();
+            this.customAudio.volume = 0;
+            this.stopSynthMusic();
+        } else {
+            this.customAudio.volume = 0.8;
+            if (window.game && window.game.mode === 'play') {
+                this.startMusic();
+            }
         }
         return this.muted;
     }
@@ -166,26 +179,18 @@ export class SoundEngine {
 
     startMusic() {
         if (this.muted) return;
-
         this.init();
 
-        if (this.isPlayingMusic) {
-            // If custom audio is loaded but not playing, start it
-            if (this.hasCustomAudio && this.customAudio.paused) {
-                this.customAudio.currentTime = 0;
-                this.customAudio.play().catch(() => {});
-            }
-            return;
-        }
-
-        this.isPlayingMusic = true;
-
         if (this.hasCustomAudio) {
+            if (!this.customAudio.paused) return;
+            this.isPlayingMusic = true;
             this.customAudio.currentTime = 0;
             this.customAudio.play().catch(() => {});
             return;
         }
 
+        if (this.isPlayingMusic) return;
+        this.isPlayingMusic = true;
         this.startSynthMusic();
     }
 
