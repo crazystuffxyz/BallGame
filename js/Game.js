@@ -96,15 +96,17 @@ export class Game {
         this.level = new LevelManager(this.scene);
         const saved = Storage.load();
         if (saved) {
-            this.levelData = normalizeLevelData(saved);
+            this.level.loadLevel(normalizeLevelData(saved));
         } else {
-            this.levelData = normalizeLevelData(JSON.parse(JSON.stringify(PRESETS.preset_cloud)));
+            this.level.loadLevel(normalizeLevelData(JSON.parse(JSON.stringify(PRESETS.preset_cloud))));
         }
-        this.level.loadLevel(this.levelData);
+        // Sync: always use the level's normalized copy as the single source of truth
+        this.levelData = this.level.levelData;
 
         if (this.levelData.customBgColor) {
             this.setCustomBackgroundColor(this.levelData.customBgColor);
         } else {
+            this.setTheme(this.levelData.theme || 'sky');
             const themeSelect = document.getElementById('theme-select');
             if (themeSelect) themeSelect.value = this.levelData.theme || 'sky';
         }
@@ -192,9 +194,11 @@ export class Game {
         };
         musicFileInput.onchange = (e) => {
             if (e.target.files && e.target.files[0]) {
-                this.sound.setCustomAudioFile(e.target.files[0]);
-                document.getElementById('music-upload-btn').innerHTML = "🎵 <span class='hide-mobile'>Custom</span>";
-                alert("Custom music loaded!");
+                const file = e.target.files[0];
+                this.sound.init();
+                this.sound.setCustomAudioFile(file);
+                const name = file.name.length > 18 ? file.name.substring(0, 16) + '…' : file.name;
+                document.getElementById('music-upload-btn').innerHTML = `🎵 <span class='hide-mobile'>${name}</span>`;
             }
         };
 
@@ -234,8 +238,9 @@ export class Game {
 
     loadPreset(presetKey) {
         if (PRESETS[presetKey]) {
-            this.levelData = normalizeLevelData(JSON.parse(JSON.stringify(PRESETS[presetKey])));
-            this.level.loadLevel(this.levelData);
+            this.level.loadLevel(normalizeLevelData(JSON.parse(JSON.stringify(PRESETS[presetKey]))));
+            // Sync single source of truth
+            this.levelData = this.level.levelData;
             this.setTheme(this.levelData.theme);
             document.getElementById('theme-select').value = this.levelData.theme;
             this.editor.updateScrubber();
@@ -394,7 +399,6 @@ export class Game {
             const ox = child.position.x;
             const oz = child.position.z;
 
-            // 1. Collectible Items
             if (u.isItem) {
                 const dist3D = child.position.distanceTo(P);
                 if (dist3D < (u.hitRadius + R)) {
@@ -412,7 +416,6 @@ export class Game {
                 continue;
             }
 
-            // 2. Pyramid (2)
             if (u.isPyramid) {
                 const sqDist = this.sqDistPointPyramid(P.x, P.y, P.z, ox, 0, oz, u.halfBase, u.height);
                 if (sqDist <= Rsq) {
@@ -422,7 +425,6 @@ export class Game {
                 continue;
             }
 
-            // 3. Tree (1)
             if (u.isTree) {
                 const trunkSq = this.sqDistPointCylinder(P.x, P.y, P.z, ox, oz, 0, 0.8, 0.3);
                 if (trunkSq <= Rsq) {
@@ -437,7 +439,6 @@ export class Game {
                 continue;
             }
 
-            // 4. Laser Gate (3)
             if (u.isLaser) {
                 const poleLSq = this.sqDistPointCylinder(P.x, P.y, P.z, ox - 0.9, oz, 0, 2.5, 0.1);
                 const poleRSq = this.sqDistPointCylinder(P.x, P.y, P.z, ox + 0.9, oz, 0, 2.5, 0.1);
@@ -457,7 +458,6 @@ export class Game {
                 continue;
             }
 
-            // 5. Hammer (4)
             if (u.isHammer) {
                 const hdx = P.x - ox;
                 const hdz = P.z - oz;
@@ -469,7 +469,6 @@ export class Game {
                 continue;
             }
 
-            // 6. Box Obstacles (Wall, Ceiling Wall, Drop Block)
             if (u.isBox) {
                 const sqDist = this.sqDistPointAABB(
                     P.x, P.y, P.z,
@@ -484,7 +483,6 @@ export class Game {
                 continue;
             }
 
-            // 7. Pop-up Brick (10)
             if (u.isBrick && u.brickData) {
                 const bY = u.brickData.currentY;
                 if (bY > -0.45) {
