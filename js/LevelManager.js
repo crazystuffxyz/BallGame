@@ -46,7 +46,6 @@ export class LevelManager {
         this.geometries.overheadWall = new THREE.BoxGeometry(1.8, 6.0, 1.8);
         this.geometries.borderCell = new THREE.EdgesGeometry(new THREE.BoxGeometry(2.0, 0.05, 2.0));
 
-        // Brick obstacle geometries (1x1x1 brick + flat pad base)
         this.geometries.brick = new THREE.BoxGeometry(1.0, 1.0, 1.0);
         this.geometries.brickPad = new THREE.BoxGeometry(1.4, 0.06, 1.4);
 
@@ -63,7 +62,10 @@ export class LevelManager {
         this.themeKey = themeKey;
         const theme = THEMES[themeKey] || THEMES.sky;
 
-        const floorTex = TextureGen.createTileTexture(theme.tileColors.main, theme.tileColors.sub, theme.tileColors.border);
+        const customMain = (this.levelData && this.levelData.tileMainColor) ? this.levelData.tileMainColor : theme.tileColors.main;
+        const customBorder = (this.levelData && this.levelData.tileBorderColor) ? this.levelData.tileBorderColor : theme.tileColors.border;
+
+        const floorTex = TextureGen.createTileTexture(customMain, theme.tileColors.sub, customBorder);
         floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
 
         this.materials.floor = new THREE.MeshStandardMaterial({
@@ -125,19 +127,24 @@ export class LevelManager {
             side: THREE.DoubleSide
         });
 
+        // Wall and ceiling wall now match the floor theme color
         this.materials.wall = new THREE.MeshStandardMaterial({
-            color: 0x223344,
-            metalness: 0.6,
-            roughness: 0.2,
+            color: new THREE.Color(customMain),
+            emissive: new THREE.Color(customBorder),
+            emissiveIntensity: 0.15,
+            metalness: 0.5,
+            roughness: 0.3,
             transparent: true,
-            opacity: 0.5
+            opacity: 0.88
         });
         this.materials.overheadWall = new THREE.MeshStandardMaterial({
-            color: 0x3d1428,
-            metalness: 0.6,
-            roughness: 0.25,
+            color: new THREE.Color(theme.tileColors.sub),
+            emissive: new THREE.Color(customBorder),
+            emissiveIntensity: 0.15,
+            metalness: 0.5,
+            roughness: 0.35,
             transparent: true,
-            opacity: 0.5
+            opacity: 0.88
         });
         this.materials.overheadUnder = new THREE.MeshBasicMaterial({
             color: 0xff0066,
@@ -145,7 +152,6 @@ export class LevelManager {
             opacity: 0.5
         });
 
-        // Brick Material (Terracotta Red-Orange with Bevel Border)
         this.materials.brick = new THREE.MeshStandardMaterial({
             color: 0xbd4622,
             roughness: 0.5,
@@ -156,6 +162,37 @@ export class LevelManager {
             roughness: 0.7,
             metalness: 0.3
         });
+    }
+
+    applyCustomTileColors(mainColor, borderColor) {
+        const theme = THEMES[this.themeKey] || THEMES.sky;
+        const main = mainColor || (this.levelData && this.levelData.tileMainColor) || theme.tileColors.main;
+        const border = borderColor || (this.levelData && this.levelData.tileBorderColor) || theme.tileColors.border;
+
+        if (this.levelData) {
+            if (mainColor) this.levelData.tileMainColor = mainColor;
+            if (borderColor) this.levelData.tileBorderColor = borderColor;
+        }
+
+        const floorTex = TextureGen.createTileTexture(main, theme.tileColors.sub, border);
+        floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
+        if (this.materials.floor && this.materials.floor.map) {
+            this.materials.floor.map.dispose();
+        }
+        if (this.materials.floor) {
+            this.materials.floor.map = floorTex;
+            this.materials.floor.needsUpdate = true;
+        }
+
+        if (this.materials.wall) {
+            this.materials.wall.color.set(new THREE.Color(main));
+            this.materials.wall.emissive.set(new THREE.Color(border));
+            this.materials.wall.needsUpdate = true;
+        }
+        if (this.materials.overheadWall) {
+            this.materials.overheadWall.emissive.set(new THREE.Color(border));
+            this.materials.overheadWall.needsUpdate = true;
+        }
     }
 
     createTempoTileMaterial(direction, value) {
@@ -342,7 +379,6 @@ export class LevelManager {
         group.userData = { type, row, lane, collected: false };
 
         if (type === 1) {
-            // Tree: Trunk cylinder + Foliage cone
             const trunk = new THREE.Mesh(this.geometries.trunk, this.materials.treeTrunk);
             trunk.position.y = 0.4;
             const foliage = new THREE.Mesh(this.geometries.foliage, this.materials.treeFoliage);
@@ -350,7 +386,6 @@ export class LevelManager {
             group.add(trunk, foliage);
             group.userData.isTree = true;
         } else if (type === 2) {
-            // Pyramid: 4-sided cone at y = 0.9, base half-width 0.8, height 1.8
             const pyr = new THREE.Mesh(this.geometries.pyramid, this.materials.pyramid);
             pyr.position.y = 0.9;
             pyr.rotation.y = Math.PI / 4;
@@ -359,7 +394,6 @@ export class LevelManager {
             group.userData.halfBase = 0.8;
             group.userData.height = 1.8;
         } else if (type === 3) {
-            // Laser Gate: Left & Right Poles + Center Beam
             const poleL = new THREE.Mesh(this.geometries.laserPole, this.materials.hammer);
             poleL.position.set(-0.9, 1.25, 0);
             const poleR = new THREE.Mesh(this.geometries.laserPole, this.materials.hammer);
@@ -370,7 +404,6 @@ export class LevelManager {
             group.add(poleL, poleR, beam);
             group.userData.isLaser = true;
         } else if (type === 4) {
-            // Hammer: Animated swinging head and stem
             const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.5), this.materials.hammer);
             stem.position.y = 1.5;
             const head = new THREE.Mesh(this.geometries.hammerHead, this.materials.hammer);
@@ -379,7 +412,6 @@ export class LevelManager {
             group.userData.isHammer = true;
             this.animatedObs.push({ obj: group, type: 'hammer', speed: 2.5, phase: row * 0.5 });
         } else if (type === 5) {
-            // Drop Block: Box 1.6 x 2.0 x 1.6
             const block = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.0, 1.6), this.materials.pyramid);
             block.position.y = 1.0;
             group.add(block);
@@ -389,7 +421,6 @@ export class LevelManager {
             group.userData.maxY = 2.0;
             group.userData.halfZ = 0.8;
         } else if (type === 6) {
-            // Diamond collectible
             const gem = new THREE.Mesh(this.geometries.gem, this.materials.gem);
             gem.position.y = 0.75;
             group.add(gem);
@@ -397,7 +428,6 @@ export class LevelManager {
             group.userData.hitRadius = 0.8;
             this.animatedObs.push({ obj: group, type: 'spin', speed: 3.0 });
         } else if (type === 7) {
-            // Crown collectible
             const crown = new THREE.Mesh(this.geometries.crown, this.materials.crown);
             crown.position.y = 0.75;
             group.add(crown);
@@ -406,7 +436,6 @@ export class LevelManager {
             group.userData.hitRadius = 0.9;
             this.animatedObs.push({ obj: group, type: 'spin', speed: 2.0 });
         } else if (type === 8) {
-            // Wall: Box 1.8 x 8.0 x 1.8
             const wall = new THREE.Mesh(this.geometries.wall, this.materials.wall);
             wall.position.y = 4.0;
             group.add(wall);
@@ -416,7 +445,6 @@ export class LevelManager {
             group.userData.maxY = 8.0;
             group.userData.halfZ = 0.9;
         } else if (type === 9) {
-            // Ceiling Wall: Box 1.8 x 6.0 x 1.8 starting at y = 2.0
             const overhead = new THREE.Mesh(this.geometries.overheadWall, this.materials.overheadWall);
             overhead.position.y = 5.0;
             const bottomPlate = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.1, 1.8), this.materials.overheadUnder);
@@ -428,11 +456,10 @@ export class LevelManager {
             group.userData.maxY = 8.0;
             group.userData.halfZ = 0.9;
         } else if (type === 10) {
-            // Brick: Flat pad plate + 1x1x1 pop-up brick
             const pad = new THREE.Mesh(this.geometries.brickPad, this.materials.brickPad);
             pad.position.y = 0.03;
             const brick = new THREE.Mesh(this.geometries.brick, this.materials.brick);
-            brick.position.y = -0.5; // Submerged initially
+            brick.position.y = -0.5;
             group.add(pad, brick);
 
             const brickData = {
@@ -453,7 +480,6 @@ export class LevelManager {
     update(delta, playerZ) {
         const time = performance.now() * 0.001;
 
-        // Animated items & hammers
         for (let item of this.animatedObs) {
             if (item.type === 'spin') {
                 item.obj.rotation.y += item.speed * delta;
@@ -463,20 +489,17 @@ export class LevelManager {
             }
         }
 
-        // Pop-up Bricks: pop up when ball is within 4 blocks (8.0 units behind)
         for (let b of this.popBricks) {
             const distanceToPlayer = playerZ - b.zPos;
-            // When player is within 4 blocks (distanceToPlayer >= -8.0)
             if (distanceToPlayer >= -8.0) {
-                b.targetY = 0.5; // Fully popped up center (spans y = 0.0 to 1.0)
+                b.targetY = 0.5;
             }
             if (b.currentY < b.targetY) {
-                b.currentY = Math.min(b.targetY, b.currentY + delta * 8.0); // Fast, smooth popup
+                b.currentY = Math.min(b.targetY, b.currentY + delta * 8.0);
                 b.brickMesh.position.y = b.currentY;
             }
         }
 
-        // Glass slabs sinking
         for (let slab of this.glassSlabs) {
             if (!slab.isSolid) {
                 slab.mesh.position.y -= delta * 18.0;
