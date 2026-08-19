@@ -107,7 +107,8 @@ export function normalizeLevelData(data) {
             tiles: normalizeArray(row.tiles, 0).map(v => Number(v) || 0),
             obstacles: normalizeArray(row.obstacles, 0).map(v => Number(v) || 0),
             tileTempo: normalizeArray(row.tileTempo, 0).map(v => Number(v) || 0),
-            tileBgColor: normalizeArray(row.tileBgColor, '').map(v => String(v || ''))
+            tileBgColor: normalizeArray(row.tileBgColor, '').map(v => String(v || '')),
+            tileGlassGroup: normalizeArray(row.tileGlassGroup, '').map(v => String(v || ''))
         };
     });
 
@@ -170,7 +171,8 @@ export function generatePresetTrack(type) {
             tiles: tiles,
             obstacles: obs,
             tileTempo: [0, 0, 0, 0, 0, 0, 0],
-            tileBgColor: ['', '', '', '', '', '', '']
+            tileBgColor: ['', '', '', '', '', '', ''],
+            tileGlassGroup: ['', '', '', '', '', '', '']
         });
     }
     return rows;
