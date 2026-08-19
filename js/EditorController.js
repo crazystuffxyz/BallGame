@@ -21,6 +21,8 @@ export class EditorController {
         this.panStartY = 0;
         this.panStartRow = 0;
 
+        this._glassGroupCounter = 0;
+
         this.raycaster = new THREE.Raycaster();
         this.mouse = new THREE.Vector2();
         this.hoverIndicator = this.createHoverIndicator();
@@ -215,7 +217,6 @@ export class EditorController {
         window.addEventListener('pointerdown', (e) => {
             if (!this.active || this.isEventOnUI(e)) return;
 
-            // Right-click or middle-click or pan mode = pan the track
             if (e.button === 2 || e.button === 1 || this.interactionMode === 'pan') {
                 this.isPanningTrack = true;
                 this.panStartY = e.clientY;
@@ -228,7 +229,6 @@ export class EditorController {
                 updatePointerCoords(e.clientX, e.clientY);
                 if (this.hoverRow !== null && this.hoverLane !== null) {
                     this.lastPaintedKey = `${this.hoverRow},${this.hoverLane}`;
-                    // Middle mouse / e.buttons check won't work here, use selectedVal for erase
                     this.paintAtHover(false);
                 }
             }
@@ -351,33 +351,40 @@ export class EditorController {
 
     paintAtHover(isErase = false) {
         if (this.hoverLane === null || this.hoverRow === null) return;
-        // Always work on the level manager's levelData (single source of truth)
         const levelRows = this.game.level.levelData.rows;
         const row = levelRows[this.hoverRow];
         if (!row) return;
         if (!row.obstacles) row.obstacles = [0, 0, 0, 0, 0, 0, 0];
         if (!row.tileTempo) row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
         if (!row.tileBgColor) row.tileBgColor = ['', '', '', '', '', '', ''];
+        if (!row.tileGlassGroup) row.tileGlassGroup = ['', '', '', '', '', '', ''];
 
         if (this.selectedCategory === 'tile') {
             if (this.selectedVal === 4 && !isErase) {
                 const gw = parseInt(document.getElementById('glass-w-input')?.value || 1);
                 const gd = parseInt(document.getElementById('glass-d-input')?.value || 1);
+                // Assign a unique group ID to the entire painted area so it renders as
+                // exactly one slab matching the user's chosen dimensions.
+                const gid = 'g' + (++this._glassGroupCounter);
                 for (let dr = 0; dr < gd; dr++) {
                     const r = this.hoverRow + dr;
                     if (r >= levelRows.length) break;
                     const targetRow = levelRows[r];
                     if (!targetRow.tileTempo) targetRow.tileTempo = [0, 0, 0, 0, 0, 0, 0];
+                    if (!targetRow.tileGlassGroup) targetRow.tileGlassGroup = ['', '', '', '', '', '', ''];
                     for (let dc = 0; dc < gw; dc++) {
                         const c = this.hoverLane + dc;
                         if (c >= 7) break;
                         targetRow.tiles[c] = 4;
                         targetRow.tileTempo[c] = 0;
+                        targetRow.tileGlassGroup[c] = gid;
                     }
                 }
             } else {
                 const val = isErase ? 0 : this.selectedVal;
                 row.tiles[this.hoverLane] = val;
+                // Always clear the glass group for this cell when painting any non-glass tile.
+                row.tileGlassGroup[this.hoverLane] = '';
                 if (val === 8 && !isErase) {
                     row.tileTempo[this.hoverLane] = this.selectedTempoValue;
                 } else if (val === 9 && !isErase) {
@@ -407,6 +414,8 @@ export class EditorController {
         row.tileTempo[this.hoverLane] = 0;
         if (!row.tileBgColor) row.tileBgColor = ['', '', '', '', '', '', ''];
         row.tileBgColor[this.hoverLane] = '';
+        if (!row.tileGlassGroup) row.tileGlassGroup = ['', '', '', '', '', '', ''];
+        row.tileGlassGroup[this.hoverLane] = '';
         this.game.level.rebuildMeshes();
         this.game.countCollectibles();
         this.updateTempoPreview();
@@ -449,6 +458,7 @@ export class EditorController {
             row.tiles = [1, 1, 1, 1, 1, 1, 1];
             row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
             row.tileBgColor = ['', '', '', '', '', '', ''];
+            row.tileGlassGroup = ['', '', '', '', '', '', ''];
             this.game.level.rebuildMeshes();
         }
     }
@@ -461,6 +471,7 @@ export class EditorController {
             row.obstacles = [0, 0, 0, 0, 0, 0, 0];
             row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
             row.tileBgColor = ['', '', '', '', '', '', ''];
+            row.tileGlassGroup = ['', '', '', '', '', '', ''];
             this.game.level.rebuildMeshes();
             this.game.countCollectibles();
         }
@@ -485,7 +496,8 @@ export class EditorController {
                 tiles: [1, 1, 1, 1, 1, 1, 1],
                 obstacles: [0, 0, 0, 0, 0, 0, 0],
                 tileTempo: [0, 0, 0, 0, 0, 0, 0],
-                tileBgColor: ['', '', '', '', '', '', '']
+                tileBgColor: ['', '', '', '', '', '', ''],
+                tileGlassGroup: ['', '', '', '', '', '', '']
             });
         }
         this.updateScrubber();
@@ -499,6 +511,7 @@ export class EditorController {
                 r.obstacles = [0, 0, 0, 0, 0, 0, 0];
                 r.tileTempo = [0, 0, 0, 0, 0, 0, 0];
                 r.tileBgColor = ['', '', '', '', '', '', ''];
+                r.tileGlassGroup = ['', '', '', '', '', '', ''];
             }
             this.game.level.rebuildMeshes();
             this.game.countCollectibles();
@@ -575,7 +588,6 @@ export class EditorController {
                 const parsed = JSON.parse(textarea.value);
                 if (parsed && Array.isArray(parsed.rows)) {
                     this.game.level.loadLevel(parsed);
-                    // Sync single source of truth
                     this.game.levelData = this.game.level.levelData;
                     this.updateScrubber();
                     this.syncTopbarFields();
