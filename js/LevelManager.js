@@ -127,7 +127,6 @@ export class LevelManager {
             side: THREE.DoubleSide
         });
 
-        // Wall and ceiling wall now match the floor theme color
         this.materials.wall = new THREE.MeshStandardMaterial({
             color: new THREE.Color(customMain),
             emissive: new THREE.Color(customBorder),
@@ -270,8 +269,67 @@ export class LevelManager {
         const TILE_W = 2.0;
         const TILE_D = 2.0;
         const baseTempo = this.levelData.baseTempo || 11;
-        const visitedGlass = new Set();
 
+        // Phase 1: collect all glass cells grouped by their stored group ID.
+        // Cells without a group ID (old data) each get their own unique fallback group.
+        const glassGroups = new Map();
+        for (let r = 0; r < this.levelData.rows.length; r++) {
+            const row = this.levelData.rows[r];
+            if (!row || !row.tiles) continue;
+            for (let c = 0; c < 7; c++) {
+                if (row.tiles[c] !== 4) continue;
+                const storedId = (row.tileGlassGroup && row.tileGlassGroup[c]) ? row.tileGlassGroup[c] : null;
+                const gid = storedId || `__auto_${r}_${c}`;
+                if (!glassGroups.has(gid)) glassGroups.set(gid, []);
+                glassGroups.get(gid).push({ r, c });
+            }
+        }
+
+        // Phase 2: build one slab mesh per group using the bounding box of its cells.
+        const visitedGlass = new Set();
+        for (const [, cells] of glassGroups) {
+            let minR = Infinity, maxR = -Infinity, minC = Infinity, maxC = -Infinity;
+            for (const { r, c } of cells) {
+                if (r < minR) minR = r;
+                if (r > maxR) maxR = r;
+                if (c < minC) minC = c;
+                if (c > maxC) maxC = c;
+                visitedGlass.add(`${r},${c}`);
+            }
+
+            const gw = maxC - minC + 1;
+            const gd = maxR - minR + 1;
+
+            const centerX = (minC - 3) * TILE_W + ((gw - 1) * TILE_W) / 2;
+            const centerZ = -minR * TILE_D - ((gd - 1) * TILE_D) / 2;
+
+            const slabGeo = new THREE.BoxGeometry(gw * TILE_W, 0.4, gd * TILE_D);
+            const slabMat = this.createGlassSlabMaterial(gw, gd);
+            const slabMesh = new THREE.Mesh(slabGeo, slabMat);
+            slabMesh.position.set(centerX, -0.2, centerZ);
+            slabMesh.receiveShadow = true;
+
+            const slabData = {
+                mesh: slabMesh,
+                startRow: minR,
+                startCol: minC,
+                width: gw,
+                depth: gd,
+                minX: centerX - (gw * TILE_W) / 2,
+                maxX: centerX + (gw * TILE_W) / 2,
+                minZ: centerZ - (gd * TILE_D) / 2,
+                maxZ: centerZ + (gd * TILE_D) / 2,
+                triggered: false,
+                entryZ: null,
+                isSolid: true
+            };
+
+            slabMesh.userData = slabData;
+            this.glassSlabs.push(slabData);
+            this.gridGroup.add(slabMesh);
+        }
+
+        // Phase 3: regular tile and obstacle loop, skipping glass cells already handled.
         for (let r = 0; r < this.levelData.rows.length; r++) {
             const row = this.levelData.rows[r];
             if (!row.tileTempo) row.tileTempo = [0, 0, 0, 0, 0, 0, 0];
@@ -284,61 +342,16 @@ export class LevelManager {
                 const tileType = row.tiles[c];
                 const obsType = row.obstacles ? row.obstacles[c] : 0;
 
-                if (tileType === 4) {
-                    const key = `${r},${c}`;
-                    if (!visitedGlass.has(key)) {
-                        let gw = 1;
-                        while (c + gw < 7 && row.tiles[c + gw] === 4 && !visitedGlass.has(`${r},${c + gw}`)) {
-                            gw++;
-                        }
-                        let gd = 1;
-                        while (r + gd < this.levelData.rows.length) {
-                            let match = true;
-                            for (let dc = 0; dc < gw; dc++) {
-                                if (this.levelData.rows[r + gd].tiles[c + dc] !== 4 || visitedGlass.has(`${r + gd},${c + dc}`)) {
-                                    match = false;
-                                    break;
-                                }
-                            }
-                            if (!match) break;
-                            gd++;
-                        }
-
-                        for (let dr = 0; dr < gd; dr++) {
-                            for (let dc = 0; dc < gw; dc++) {
-                                visitedGlass.add(`${r + dr},${c + dc}`);
-                            }
-                        }
-
-                        const slabGeo = new THREE.BoxGeometry(gw * TILE_W, 0.4, gd * TILE_D);
-                        const slabMat = this.createGlassSlabMaterial(gw, gd);
-                        const slabMesh = new THREE.Mesh(slabGeo, slabMat);
-
-                        const centerX = x + ((gw - 1) * TILE_W) / 2;
-                        const centerZ = z - ((gd - 1) * TILE_D) / 2;
-                        slabMesh.position.set(centerX, -0.2, centerZ);
-                        slabMesh.receiveShadow = true;
-
-                        const slabData = {
-                            mesh: slabMesh,
-                            startRow: r,
-                            startCol: c,
-                            width: gw,
-                            depth: gd,
-                            minX: centerX - (gw * TILE_W) / 2,
-                            maxX: centerX + (gw * TILE_W) / 2,
-                            minZ: centerZ - (gd * TILE_D) / 2,
-                            maxZ: centerZ + (gd * TILE_D) / 2,
-                            triggered: false,
-                            entryZ: null,
-                            isSolid: true
-                        };
-
-                        slabMesh.userData = slabData;
-                        this.glassSlabs.push(slabData);
-                        this.gridGroup.add(slabMesh);
+                if (visitedGlass.has(`${r},${c}`)) {
+                    // Glass slab already built in Phase 2; still place obstacles if any.
+                    if (obsType > 0) {
+                        const obsObj = this.createObstacleObject(obsType, x, z, r, c);
+                        if (obsObj) this.obstacleGroup.add(obsObj);
                     }
-                } else if (tileType > 0) {
+                    continue;
+                }
+
+                if (tileType > 0) {
                     let mat = this.materials.floor;
                     if (tileType === 2) mat = this.materials.jump;
                     else if (tileType === 3) mat = this.materials.bigJump;
@@ -365,9 +378,7 @@ export class LevelManager {
 
                 if (obsType > 0) {
                     const obsObj = this.createObstacleObject(obsType, x, z, r, c);
-                    if (obsObj) {
-                        this.obstacleGroup.add(obsObj);
-                    }
+                    if (obsObj) this.obstacleGroup.add(obsObj);
                 }
             }
         }
